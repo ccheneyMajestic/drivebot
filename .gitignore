@@ -1,0 +1,13 @@
+codegentemp/
+CortexM0/
+Export/
+Generated_Source/
+
+*.cycdx
+*.cyfit
+*.cchen
+*.rpt
+*.svd
+*.log
+*.html
+*.mk
