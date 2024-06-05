@@ -1,14 +1,14 @@
 /***************************************************************************
-*                           Majestic Labs  © 2023
+*                           Majestic Labs  © 2024
 * File: main.c
-* Workspace: Creator Template
+* Workspace: Drivebot_v5
 * Version: v1.0
 * Author: Craig Cheney
 *
-* PCB: 
+* PCB: mcuPSoC4
 *
 * Brief:
-*   Template for the PSoC 4200 Main 
+*   Tests for the Drivebot microcontroller 
 *
 * Change Log:
 *   2024.05.05 - Document created
@@ -29,13 +29,12 @@
 #ifdef MJL_DEBUG
 //    #define MJL_DEBUG_LED            /* Test the battery charger LED */
 //    #define MJL_DEBUG_UART            /* Test the UART Connection */
-//  #define MJL_DEBUG_BTN_POLL           /* Polling the button status */
-  #define MJL_DEBUG_BTN_INTERRUPT        /* Act on the button status from an interrupt */
+//    #define MJL_DEBUG_BTN_POLL           /* Polling the button status */
+//    #define MJL_DEBUG_BTN_INTERRUPT        /* Act on the button status from an interrupt */
 //    #define MJL_DEBUG_FLASH             /* Read and write to Flash */
 //    #define MJL_DEBUG_ENCODER           /* Read the encoders */
 //    #define MJL_DEBUG_PWM                   /* Test the PWM */
 //    #define MJL_DEBUG_MOTORS            /* Test the motors */
-    
 #endif
 /* -------------- END DEBUG CASE --------------  */
    
