@@ -143,24 +143,24 @@ int main(void){
     /* Test Cases */
     #ifdef MJL_DEBUG_LED
         /* blink the LED */
-        #define DELAY 500
+        #define DELAY_MS 500 /* Delay for the LED in [ms] */
         for(;;) {
             led_control_reg_Write(0b001);
-            CyDelay(DELAY);
+            CyDelay(DELAY_MS);
             led_control_reg_Write(0b010);
-            CyDelay(DELAY);
+            CyDelay(DELAY_MS);
             led_control_reg_Write(0b100);
-            CyDelay(DELAY);
+            CyDelay(DELAY_MS);
             led_control_reg_Write(0b011);
-            CyDelay(DELAY);
+            CyDelay(DELAY_MS);
             led_control_reg_Write(0b101);
-            CyDelay(DELAY);
+            CyDelay(DELAY_MS);
             led_control_reg_Write(0b110);
-            CyDelay(DELAY);
+            CyDelay(DELAY_MS);
             led_control_reg_Write(0b111);
-            CyDelay(DELAY);
+            CyDelay(DELAY_MS);
             led_control_reg_Write(0b000);
-            CyDelay(DELAY);
+            CyDelay(DELAY_MS);
         }
     /* End MJL_DEBUG_LED */
     #elif defined MJL_DEBUG_UART           
