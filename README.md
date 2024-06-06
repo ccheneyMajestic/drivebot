@@ -2,6 +2,8 @@
 
 Learn how to make a robot drive around from scratch 
 
+[Instructions](https://thefrontier.notion.site/Drivebot-Instructions-cc40ce03a2554190a8b564f60d7c01e6?pvs=74)
+
 ## Prerequisites 
 * Install PSoC Creator 
 * A terminal emulator program, such as TeraTerm 
