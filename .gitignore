@@ -11,3 +11,15 @@ Generated_Source/
 *.log
 *.html
 *.mk
+
+*.icf
+*.zip
+*.CCheney
+*.scat
+*.ld
+
+iar/
+gcc/
+mdk/
+CortexM0p/
+CortexM4/
