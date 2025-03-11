@@ -260,45 +260,32 @@ uint32_t spi_psoc6SCB_clearTxBuffer(void) {
   return error;
 }
 
-///*******************************************************************************
-//* Function Name: hal_drv_pin_sleep_write()
-//********************************************************************************
-//* \brief
-//*   Control the nSLEEP pin
-//*
-//* \return
-//*  Error code of the operation
-//*******************************************************************************/
-//void hal_drv_pin_sleep_write(uint32_t val) {
-//  #ifdef USE_SPI
-//  Cy_GPIO_Write(pin_DRV_nSLEEP_0_PORT, pin_DRV_nSLEEP_0_NUM, val);
-//  #endif /* USE_SPI */
-//
-//}
-//
-///*******************************************************************************
-//* Function Name: hal_drv_pin_drvoff_write()
-//********************************************************************************
-//* \brief
-//*   Control the DRVOFF pin
-//*
-//* \return
-//*  Error code of the operation
-//*******************************************************************************/
-//void hal_drv_pin_drvoff_write(uint32_t val) {
-//  Cy_GPIO_Write(pin_DRV_DRVOFF_0_PORT, pin_DRV_DRVOFF_0_NUM, val);
-//}
-//
-///*******************************************************************************
-//* Function Name: hal_drv_pin_nfault_read()
-//********************************************************************************
-//* \brief
-//*   Read the nFault pin
-//*
-//* \return
-//*  Error code of the operation
-//*******************************************************************************/
-//uint32_t hal_drv_pin_nfault_read(void){
-//  return Cy_GPIO_Read(pin_DRV_nFAULT_PORT, pin_DRV_nFAULT_NUM); 
-//}
+/*******************************************************************************
+* Function Name: hal_led_pin_write()
+********************************************************************************
+* \brief
+*  Set the state of the offboard LED
+* 
+* \param state [in]
+* The desired state to place the pin into 
+*
+* \return
+*  Error code of the operation
+*******************************************************************************/
+uint32_t hal_led_pin_write(bool state) {
+  Cy_GPIO_Write(pin_LED_EXT_0_PORT, pin_LED_EXT_0_NUM, state);
+  return 0;
+}
 
+/*******************************************************************************
+* Function Name: hal_set_rgb_duty()
+********************************************************************************
+* \brief
+*   Set the RGB led input is [0-100] as a duty ration
+*
+*******************************************************************************/
+uint32_t hal_set_rgb_duty(uint8_t red, uint8_t green, uint8_t blue){
+  Cy_TCPWM_PWM_SetCompare0(pwm_led_R_HW, pwm_led_R_CNT_NUM, red);
+  Cy_TCPWM_PWM_SetCompare0(pwm_led_G_HW, pwm_led_G_CNT_NUM, green);
+  Cy_TCPWM_PWM_SetCompare0(pwm_led_B_HW, pwm_led_B_CNT_NUM, blue);
+}

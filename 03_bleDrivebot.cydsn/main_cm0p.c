@@ -20,6 +20,7 @@
 #include "LTC6915.h"
 #include "DRV8244.h"
 #include "max31856.h"
+#include "ble_callback.h"
 
 
 /* ####################### BEGIN PROGRAM CONFIGURATION ###################### */
@@ -67,7 +68,6 @@ uint32_t get_system_time_atomic(system_time_s *const state);
 
 uint32_t drv8244_current_from_voltage(drv8244_state_s *const, float32_t voltage); 
 
-void set_rgb(uint8_t red, uint8_t green, uint8_t blue);
 
 /* Global Variables */
 volatile bool flag_timer_second;
@@ -221,13 +221,23 @@ int main(void){
     uart_println(&usb, "");
     uart_println(&usb,"* Press 'Enter' to reset");
     uart_println(&usb, "");
-    set_rgb(0, 0, 50);
-
-    /* Read the button state */
-    bool stateBtn = false;
-    bool stateBtn_prev = true;
+    
+    /* Start the BLE component */
+    Cy_BLE_Start(bleApp_eventCallback);
+    /********* Set the initial states *********/
+    /* LED */
+    bleState.ledHandle.value.val[0] = false;
+    bleApp_led_write_handler(&bleState.ledHandle.value);
+    /* RGB */
+    bleState.rgbHandle.value.val[0] = 0;
+    bleState.rgbHandle.value.val[1] = 50;
+    bleState.rgbHandle.value.val[2] = 0;
+    bleApp_rgb_write_handler(&bleState.rgbHandle.value);
+    
+    
     
     for(;;) {
+      /* Handle the UART */
       uint8_t readVal = 0;
       uint32_t readError = uart_read(&usb, &readVal);
       if(!readError) {
@@ -241,20 +251,8 @@ int main(void){
           NVIC_SystemReset();
         }
       }
-
-      stateBtn = Cy_GPIO_Read(pin_BTN_0_PORT, pin_BTN_0_NUM);
-      if(stateBtn != stateBtn_prev){
-        stateBtn_prev = stateBtn;
-        uart_printlnf(&usb, "Btn: %b", stateBtn);
-        Cy_GPIO_Write(pin_LED_EXT_0_PORT, pin_LED_EXT_0_NUM, stateBtn);
-        if(stateBtn){
-          /* Green when button pressed */
-          set_rgb(0, 50, 0);
-        } else {
-          /* Blue when button not pressed */
-          set_rgb(0, 0, 50);
-        }
-      }
+      /* Process ble events */
+      Cy_BLE_ProcessEvents();
     }
     
 
@@ -514,18 +512,7 @@ uint32_t get_system_time_atomic(system_time_s *const state){
   return error;
 }
 
-/*******************************************************************************
-* Function Name: set_rgb()
-********************************************************************************
-* \brief
-*   Set the RGB led input is [0-100] as a duty ration
-*
-*******************************************************************************/
-void set_rgb(uint8_t red, uint8_t green, uint8_t blue){
-    Cy_TCPWM_PWM_SetCompare0(pwm_led_R_HW, pwm_led_R_CNT_NUM, red);
-    Cy_TCPWM_PWM_SetCompare0(pwm_led_G_HW, pwm_led_G_CNT_NUM, green);
-    Cy_TCPWM_PWM_SetCompare0(pwm_led_B_HW, pwm_led_B_CNT_NUM, blue);
-}
+
 
 
 /* [] END OF FILE */
