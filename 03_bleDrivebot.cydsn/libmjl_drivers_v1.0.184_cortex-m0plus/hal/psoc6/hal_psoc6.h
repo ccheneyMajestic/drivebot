@@ -29,9 +29,27 @@
   ***************************************/
   #define LED_ON (0)
   #define LED_OFF (1)
+  #define ENCODER_OFFSET    (1u<<31)
+  #define RGB_INDEX_RED     (0)
+  #define RGB_INDEX_GREEN   (1)
+  #define RGB_INDEX_BLUE    (2)
+  /* Motor Control Register */
+  #define MOTOR_INDEX_LEFT   (0)
+  #define MOTOR_INDEX_RIGHT  (1)
+  #define MOTOR_DIRECTION_MASK      (0b0011)
+  #define MOTOR_ENABLE_MASK         (0b1100)
+  #define MOTOR_ENABLE_LEFT_SHIFT   (3)
+  #define MOTOR_ENABLE_RIGHT_SHIFT  (2)
+  #define MOTOR_DIRECTION_LEFT_SHIFT (1)
+  #define MOTOR_DIRECTION_RIGHT_SHIFT (0)
+  #define MOTOR_EFFORT_MAX            (1000)
+  #define MOTOR_EFFORT_MIN            (-1000)
+  
   /***************************************
-  * Enumerated types
+  * Macro-like definitions
   ***************************************/
+  #define CLAMP(value, min, max) ((value) < (min) ? (min) : ((value) > (max) ? (max) : (value)))
+
   
   /***************************************
   * Forward Declarations
@@ -61,7 +79,11 @@
   uint32_t spi_psoc6SCB_clearTxBuffer(void);
   
   uint32_t hal_led_pin_write(bool state);
-  uint32_t hal_set_rgb_duty(uint8_t red, uint8_t green, uint8_t blue);
+  uint32_t hal_rgb_set_duty(uint8_t red, uint8_t green, uint8_t blue);
+  uint32_t hal_encoder_read_left(int32_t* encoder_val);
+  uint32_t hal_encoder_read_right(int32_t* encoder_val);
+  uint32_t hal_motors_enable(bool left, bool right);
+  uint32_t hal_motors_set_effort(int16_t left, int16_t right);
 
   
     

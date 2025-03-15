@@ -278,14 +278,114 @@ uint32_t hal_led_pin_write(bool state) {
 }
 
 /*******************************************************************************
-* Function Name: hal_set_rgb_duty()
+* Function Name: hal_rgb_set_duty()
 ********************************************************************************
 * \brief
 *   Set the RGB led input is [0-100] as a duty ration
 *
 *******************************************************************************/
-uint32_t hal_set_rgb_duty(uint8_t red, uint8_t green, uint8_t blue){
+uint32_t hal_rgb_set_duty(uint8_t red, uint8_t green, uint8_t blue){
   Cy_TCPWM_PWM_SetCompare0(pwm_led_R_HW, pwm_led_R_CNT_NUM, red);
   Cy_TCPWM_PWM_SetCompare0(pwm_led_G_HW, pwm_led_G_CNT_NUM, green);
   Cy_TCPWM_PWM_SetCompare0(pwm_led_B_HW, pwm_led_B_CNT_NUM, blue);
+  return 0;
+}
+
+/*******************************************************************************
+* Function Name: hal_encoder_read_left()
+********************************************************************************
+* \brief
+*   Read the current position of the left encoder
+* 
+* \param encoder_val [out]
+* Pointer to the return value
+* 
+* \returns
+* Error code of the operation
+*******************************************************************************/
+uint32_t hal_encoder_read_left(int32_t* encoder_val){
+  *encoder_val = (int32_t) (Cy_TCPWM_Counter_GetCounter(encoder_left_HW, encoder_left_CNT_NUM) - ENCODER_OFFSET);
+  return 0;
+}
+
+/*******************************************************************************
+* Function Name: hal_encoder_read_right()
+********************************************************************************
+* \brief
+*   Read the current position of the right encoder
+* 
+* \param encoder_val [out]
+* Pointer to the return value
+* 
+* \returns
+* Error code of the operation
+*******************************************************************************/
+uint32_t hal_encoder_read_right(int32_t* encoder_val){
+  *encoder_val = (int32_t) (Cy_TCPWM_Counter_GetCounter(encoder_right_HW, encoder_right_CNT_NUM) - ENCODER_OFFSET);
+  return 0;
+}
+
+/*******************************************************************************
+* Function Name: hal_motors_enable()
+********************************************************************************
+* \brief
+*   Enable or disable the motor drivers
+* 
+* \param left [in]
+*  Enable or disable the left motor 
+* 
+* \param right [in]
+*  Enable or disable the right motor 
+* 
+* \returns
+* Error code of the operation
+*******************************************************************************/
+uint32_t hal_motors_enable(bool left, bool right){
+  /* Read the current state of the control register */
+  uint8_t control_word = motor_control_reg_Read();
+  /* Clear the motor bits */
+  control_word &= ~MOTOR_ENABLE_MASK;
+  /* Set the motor bits to the new state */
+  control_word |= ((uint8_t) left) << MOTOR_ENABLE_LEFT_SHIFT;
+  control_word |= ((uint8_t) right) << MOTOR_ENABLE_RIGHT_SHIFT;
+  /* Write the control word to the register */
+  motor_control_reg_Write(control_word);
+  return 0;
+}
+
+/*******************************************************************************
+* Function Name: hal_motors_set_effort()
+********************************************************************************
+* \brief
+*   Set the PWM duty ratio for each motor [-1000, 1000]
+* 
+* \param left [in]
+*  Pwm value for the left motor
+* 
+* \param right [in]
+*  Pwm value for the right motor
+* 
+* \returns
+* Error code of the operation
+*******************************************************************************/
+uint32_t hal_motors_set_effort(int16_t left, int16_t right){
+  uint32_t error = 0;
+  /* Determine directions */
+  bool is_left_reverse = left < 0;
+  bool is_right_reverse = right < 0;
+  /* Take the absolute value of the control word */
+  uint16_t left_control = is_left_reverse ? -left : left;
+  uint16_t right_control = is_right_reverse ? -right : right;
+  /* Read the current state of the control register */
+  uint8_t control_word = motor_control_reg_Read();
+  /* Clear the direction bits */
+  control_word &= ~MOTOR_DIRECTION_MASK;
+  control_word |= ((uint8_t) is_left_reverse) << MOTOR_DIRECTION_LEFT_SHIFT;
+  control_word |= ((uint8_t) is_right_reverse) << MOTOR_DIRECTION_RIGHT_SHIFT;
+  /* Set the PWM values */
+  pwm_left_SetCompare0(left_control);
+  pwm_right_SetCompare0(right_control);
+  /* Write the control word to the register */
+  motor_control_reg_Write(control_word);
+  return error;
 }

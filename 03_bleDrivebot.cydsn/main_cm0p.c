@@ -20,7 +20,7 @@
 #include "LTC6915.h"
 #include "DRV8244.h"
 #include "max31856.h"
-#include "ble_callback.h"
+#include "ble_app.h"
 
 
 /* ####################### BEGIN PROGRAM CONFIGURATION ###################### */
@@ -34,7 +34,9 @@
 //  #define MJL_DEBUG_LED            /* Test the battery charger LED */
 //  #define MJL_DEBUG_UART            /* Test the UART Connection */
 //  #define MJL_DEBUG_BTN /* Test the button */
-  #define MJL_DEBUG_BLE   /* Start ble */
+//  #define MJL_DEBUG_ENCODERS /* Test the encoders */
+//  #define MJL_DEBUG_MOTORS /* Press the button to toggle motors */
+  #define MJL_DEBUG_BLE   /* Test the basic ble application */
 //  #define MJL_DEBUG_PWM /*  Test PWM  */
 //  #define MJL_DEBUG_TIMERS /* Test the timers */
 //  #define MJL_DEBUG_ADC               /* Read the ADC */
@@ -141,11 +143,11 @@ int main(void){
     /* Cycle the RGB LED */    
     uint8_t brightness = 25;
     for(;;) {
-        set_rgb(brightness, 0, 0);
+        hal_rgb_set_duty(brightness, 0, 0);
         CyDelay(500);
-        set_rgb(0, brightness, 0);
+        hal_rgb_set_duty(0, brightness, 0);
         CyDelay(500);
-        set_rgb(0, 0, brightness);
+        hal_rgb_set_duty(0, 0, brightness);
         CyDelay(500);   
         /* Increase the brightness */
         brightness += 25;
@@ -161,7 +163,7 @@ int main(void){
   uart_println(&usb, "");
   uart_println(&usb,"* Press 'Enter' to reset");
   uart_println(&usb, "");
-  set_rgb(0, 0, 50);
+  hal_rgb_set_duty(0, 0, 50);
 
   for(;;) {
     uint8_t readVal = 0;
@@ -185,7 +187,7 @@ int main(void){
     uart_println(&usb, "");
     uart_println(&usb,"* Press 'Enter' to reset");
     uart_println(&usb, "");
-    set_rgb(0, 0, 50);
+    hal_rgb_set_duty(0, 0, 50);
 
     /* Read the button state */
     bool stateBtn = false;
@@ -213,7 +215,101 @@ int main(void){
         Cy_GPIO_Write(pin_LED_EXT_0_PORT, pin_LED_EXT_0_NUM, stateBtn);
       }
     }
+  #elif defined MJL_DEBUG_ENCODERS
+    /* Test the encoders */
+    uart_printHeader(&usb, "MJL_DEBUG_ENCODERS", __DATE__, __TIME__);
+    CyDelay(10);
+    uart_println(&usb, "");
+    uart_println(&usb,"* Press 'Enter' to reset");
+    uart_println(&usb, "");
+    hal_rgb_set_duty(0, 0, 50);
+        
+    int32_t encoder_left = 0;
+    int32_t encoder_left_prev = 0;
+    int32_t encoder_right = 0;
+    int32_t encoder_right_prev = 0;
     
+    for(;;) {
+      /* Service the UART */
+      uint8_t readVal = 0;
+      uint32_t readError = uart_read(&usb, &readVal);
+      if(!readError) {               
+        /* Reset on Enter */
+        if('\r' == readVal) {
+          uart_print(&usb, "\r\nResetting...");
+          CyDelay(1000);
+          /* Reset both cores */
+          NVIC_SystemReset();
+        }
+      }
+      /* Read the encoder value */
+      hal_encoder_read_left(&encoder_left);
+      hal_encoder_read_right(&encoder_right);      
+      if((encoder_left != encoder_left_prev) || (encoder_right != encoder_right_prev)){
+        encoder_left_prev = encoder_left;
+        encoder_right_prev = encoder_right;
+        uart_print(&usb, CMD_CLEAR_LINEUP);
+        uart_printlnf(&usb, "L:%d R:%d", encoder_left, encoder_right);
+      }
+    }
+  #elif defined MJL_DEBUG_MOTORS 
+    /* Press the button to toggle motors */
+      uart_printHeader(&usb, "MJL_DEBUG_MOTORS", __DATE__, __TIME__);
+    CyDelay(10);
+    uart_println(&usb, "");
+    uart_println(&usb,"* Press 'Enter' to reset");
+    uart_println(&usb,"* Press 'Space' to Cycle through the motor states");
+    uart_println(&usb, "");
+    hal_rgb_set_duty(50,0,0);
+    
+    #define MOTOR_STATE_DISABLED    (0)
+    #define MOTOR_STATE_FORWARD     (1)
+    #define MOTOR_STATE_REVERSE     (2)
+    uint8_t motor_state = MOTOR_STATE_DISABLED;
+    uint8_t motor_state_prev = MOTOR_STATE_FORWARD;
+        
+    for(;;) {
+      /*************** UART ***************/
+      uint8_t readVal = 0;
+      uint32_t readError = uart_read(&usb, &readVal);
+      if(!readError) {               
+        /* Reset on Enter */
+        if('\r' == readVal) {
+          uart_print(&usb, "\r\nResetting...");
+          CyDelay(1000);
+          /* Reset both cores */
+          NVIC_SystemReset();
+        }
+        /* Advance the state */
+        else if (' ' == readVal){
+          motor_state++;
+          if(motor_state > MOTOR_STATE_REVERSE){
+            motor_state = MOTOR_STATE_DISABLED; 
+          }
+        }
+      }
+      /*************** Motor ***************/
+      if(motor_state != motor_state_prev){
+        motor_state_prev = motor_state;
+        if(MOTOR_STATE_DISABLED == motor_state){
+          uart_println(&usb, "Motors Disabled"); 
+          hal_motors_enable(false, false);
+          hal_rgb_set_duty(50,0,0);
+        }
+        else if (MOTOR_STATE_FORWARD == motor_state){
+          uart_println(&usb, "Motors Forward");
+          hal_motors_enable(true, true);
+          hal_motors_set_effort(1000, 1000);
+          hal_rgb_set_duty(0,50,0);
+        }
+        else if (MOTOR_STATE_REVERSE == motor_state){
+          uart_println(&usb, "Motors Reverse");
+          hal_motors_enable(true, true);
+          hal_motors_set_effort(-1000, -1000);          
+          hal_rgb_set_duty(0,0,50);
+        }
+      }
+    }
   #elif defined MJL_DEBUG_BLE   
     /* Start ble */
     uart_printHeader(&usb, "MJL_DEBUG_BLE", __DATE__, __TIME__);
@@ -226,15 +322,18 @@ int main(void){
     Cy_BLE_Start(bleApp_eventCallback);
     /********* Set the initial states *********/
     /* LED */
-    bleState.ledHandle.value.val[0] = false;
-    bleApp_led_write_handler(&bleState.ledHandle.value);
+    bleApp_led_update_state(false, true);
     /* RGB */
-    bleState.rgbHandle.value.val[0] = 0;
-    bleState.rgbHandle.value.val[1] = 50;
-    bleState.rgbHandle.value.val[2] = 0;
-    bleApp_rgb_write_handler(&bleState.rgbHandle.value);
+    bleApp_rgb_update_state(0, 50, 0, true);
+    /* Motor Enable */
+    bleApp_motorEnable_update_state(false, false, true);
+    /* Motor Effort */
+    bleApp_motorEffort_update_state(500, 500, true);
     
-    
+    int32_t encoder_left = 0;
+    int32_t encoder_left_prev = 0;
+    int32_t encoder_right = 0;
+    int32_t encoder_right_prev = 0;
     
     for(;;) {
       /* Handle the UART */
@@ -251,6 +350,15 @@ int main(void){
           NVIC_SystemReset();
         }
       }
+      /* Update the encoders */
+      hal_encoder_read_left(&encoder_left);
+      hal_encoder_read_right(&encoder_right);      
+      if((encoder_left != encoder_left_prev) || (encoder_right != encoder_right_prev)){
+        encoder_left_prev = encoder_left;
+        encoder_right_prev = encoder_right;
+        bleApp_encoder_update_state(encoder_left, encoder_right);
+      }
+      
       /* Process ble events */
       Cy_BLE_ProcessEvents();
     }
@@ -448,6 +556,16 @@ uint32_t initHardware(void) {
   uartCfg.hal_opt_externalStop = uart_psoc6SCB_stop;
   error |= uart_init(&usb, &uartCfg);
   error |= uart_start(&usb);
+  
+  /* Start the encoders */  
+  encoder_left_Start();
+  encoder_right_Start();
+  
+  /* Start the motor PWM Block */
+  pwm_left_Start();
+  pwm_right_Start();    
+  pwm_left_SetCompare0(1000);
+  pwm_right_SetCompare0(1000);
    
 //  /*Connect the microsecond timer to the second interrupt */
 //  Cy_SysInt_Init(&interrupt_second_cfg, isr_second);
