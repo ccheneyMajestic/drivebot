@@ -261,6 +261,28 @@ uint32_t spi_psoc6SCB_clearTxBuffer(void) {
 }
 
 /*******************************************************************************
+* Function Name: hal_reset_device()
+********************************************************************************
+* \brief
+*   Resets the microcontroller after printing to the uart, if present. This
+*   function will never return.
+*
+* \return
+*  This function will never return
+*******************************************************************************/
+void hal_reset_device(MLJ_UART_S *const uart){
+  /* Print to uart if present */
+  if(NULL != uart) {
+    uart_print(&usb, "\r\nResetting...");
+    CyDelay(1000);
+  }
+  /* Reset both cores */
+  NVIC_SystemReset();
+}
+
+
+
+/*******************************************************************************
 * Function Name: hal_led_pin_write()
 ********************************************************************************
 * \brief

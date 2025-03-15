@@ -113,12 +113,7 @@ int main(void) {
     uint32_t readError = uart_read(&usb, &readVal);
     if(!readError) {
       /* Reset on Enter */
-      if('\r' == readVal) {
-        uart_print(&usb, "\r\nResetting...");
-        CyDelay(1000);
-        /* Reset both cores */
-        NVIC_SystemReset();
-      }
+      if('\r' == readVal) {hal_reset_device(&usb);}
     }
   }    
 }
@@ -172,12 +167,7 @@ int main(void){
       /* Echo UART */
       uart_write(&usb, readVal);                
       /* Reset on Enter */
-      if('\r' == readVal) {
-        uart_print(&usb, "\r\nResetting...");
-        CyDelay(1000);
-        /* Reset both cores */
-        NVIC_SystemReset();
-      }
+      if('\r' == readVal) {hal_reset_device(&usb);}
     }
   }
   #elif defined MJL_DEBUG_BTN
@@ -200,12 +190,7 @@ int main(void){
         /* Echo UART */
         uart_write(&usb, readVal);                
         /* Reset on Enter */
-        if('\r' == readVal) {
-          uart_print(&usb, "\r\nResetting...");
-          CyDelay(1000);
-          /* Reset both cores */
-          NVIC_SystemReset();
-        }
+        if('\r' == readVal) {hal_reset_device(&usb);}
       }
 
       stateBtn = Cy_GPIO_Read(pin_BTN_0_PORT, pin_BTN_0_NUM);
@@ -235,12 +220,7 @@ int main(void){
       uint32_t readError = uart_read(&usb, &readVal);
       if(!readError) {               
         /* Reset on Enter */
-        if('\r' == readVal) {
-          uart_print(&usb, "\r\nResetting...");
-          CyDelay(1000);
-          /* Reset both cores */
-          NVIC_SystemReset();
-        }
+        if('\r' == readVal) {hal_reset_device(&usb);}
       }
       /* Read the encoder value */
       hal_encoder_read_left(&encoder_left);
@@ -274,12 +254,7 @@ int main(void){
       uint32_t readError = uart_read(&usb, &readVal);
       if(!readError) {               
         /* Reset on Enter */
-        if('\r' == readVal) {
-          uart_print(&usb, "\r\nResetting...");
-          CyDelay(1000);
-          /* Reset both cores */
-          NVIC_SystemReset();
-        }
+        if('\r' == readVal) {hal_reset_device(&usb);}
         /* Advance the state */
         else if (' ' == readVal){
           motor_state++;
@@ -339,16 +314,9 @@ int main(void){
       /* Handle the UART */
       uint8_t readVal = 0;
       uint32_t readError = uart_read(&usb, &readVal);
-      if(!readError) {
-        /* Echo UART */
-        uart_write(&usb, readVal);                
+      if(!readError) {              
         /* Reset on Enter */
-        if('\r' == readVal) {
-          uart_print(&usb, "\r\nResetting...");
-          CyDelay(1000);
-          /* Reset both cores */
-          NVIC_SystemReset();
-        }
+        if('\r' == readVal) {hal_reset_device(&usb);}
       }
       /* Update the encoders */
       hal_encoder_read_left(&encoder_left);
@@ -362,8 +330,6 @@ int main(void){
       /* Process ble events */
       Cy_BLE_ProcessEvents();
     }
-    
-
   #elif defined MJL_DEBUG_PWM           
     /* Basic usage the DRV driver chip */
     uart_printHeader(&usb, "MJL_DEBUG_DRV", __DATE__, __TIME__);

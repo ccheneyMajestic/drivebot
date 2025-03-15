@@ -78,6 +78,7 @@
   uint32_t spi_psoc6SCB_clearRxBuffer(void);
   uint32_t spi_psoc6SCB_clearTxBuffer(void);
   
+  void hal_reset_device(MLJ_UART_S *const uart);
   uint32_t hal_led_pin_write(bool state);
   uint32_t hal_rgb_set_duty(uint8_t red, uint8_t green, uint8_t blue);
   uint32_t hal_encoder_read_left(int32_t* encoder_val);
