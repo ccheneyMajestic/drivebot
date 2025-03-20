@@ -303,7 +303,7 @@ uint32_t hal_led_pin_write(bool state) {
 * Function Name: hal_rgb_set_duty()
 ********************************************************************************
 * \brief
-*   Set the RGB led input is [0-100] as a duty ration
+*   Set the RGB led pwm values [0-255]
 *
 *******************************************************************************/
 uint32_t hal_rgb_set_duty(uint8_t red, uint8_t green, uint8_t blue){
@@ -312,6 +312,50 @@ uint32_t hal_rgb_set_duty(uint8_t red, uint8_t green, uint8_t blue){
   Cy_TCPWM_PWM_SetCompare0(pwm_led_B_HW, pwm_led_B_CNT_NUM, blue);
   return 0;
 }
+
+/*******************************************************************************
+* Function Name: hal_rgb_set_duty()
+********************************************************************************
+* \brief
+*   Set the RGB led pwm values from a single uint32_t [0-255]
+*
+*******************************************************************************/
+uint32_t hal_rgb_set_duty_word(uint32_t rgbWord){
+  uint32_t error = 0;
+  uint8_t red, green, blue;
+  error |= hal_rgb_get_duty_word(rgbWord, &red, &green, &blue);
+  error |= hal_rgb_set_duty(red, green, blue);
+  return error;
+}
+
+/*******************************************************************************
+* Function Name: hal_rgb_get_duty_word()
+********************************************************************************
+* \brief
+*   Map and RGB word into the red, green, blue values
+*
+* \param rgbWord [in]
+* RGB Word to use
+*
+* \param red [out]
+* Pointer to place the unpacked value into
+*
+* \param green [out]
+* Pointer to place the unpacked value into
+*
+* \param blue [out]
+* Pointer to place the unpacked value into
+*
+* \return 
+* Error code of the operation
+*******************************************************************************/
+uint32_t hal_rgb_get_duty_word(uint32_t rgbWord, uint8_t* red, uint8_t* green, uint8_t* blue){
+  *red = (uint8_t) (rgbWord >> RGB_SHIFT_RED);
+  *green = (uint8_t) (rgbWord >> RGB_SHIFT_GREEN);
+  *blue = (uint8_t) (rgbWord >> RGB_SHIFT_BLUE);
+  return 0;
+}
+
 
 /*******************************************************************************
 * Function Name: hal_encoder_read_left()
@@ -411,3 +455,14 @@ uint32_t hal_motors_set_effort(int16_t left, int16_t right){
   motor_control_reg_Write(control_word);
   return error;
 }
+
+/* Colors */
+const uint32_t advertisingColors[ADVERTISING_COLORS_LEN] = {
+  0x000080, /* Red */
+  0x800000, /* Blue */
+  0x008080, /* Yellow */
+  0x800080, /* Magenta */
+  0x808000, /* Cyan */
+  0x004060, /* Orange */
+  0x600040, /* Purple */
+};

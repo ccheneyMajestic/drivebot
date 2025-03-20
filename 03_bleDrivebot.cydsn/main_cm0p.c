@@ -25,7 +25,7 @@
 
 /* ####################### BEGIN PROGRAM CONFIGURATION ###################### */
 
-#define MJL_DEBUG
+//#define MJL_DEBUG
 /* ---------------- DEBUG CASE ----------------
 * Uncomment ONE of the following
 * Debugging will only occur when MJL_DEBUG is defined
@@ -33,9 +33,10 @@
 #ifdef MJL_DEBUG
 //  #define MJL_DEBUG_LED            /* Test the battery charger LED */
 //  #define MJL_DEBUG_UART            /* Test the UART Connection */
-//  #define MJL_DEBUG_BTN /* Test the button */
+  #define MJL_DEBUG_BTN /* Test the button */
 //  #define MJL_DEBUG_ENCODERS /* Test the encoders */
 //  #define MJL_DEBUG_MOTORS /* Press the button to toggle motors */
+//  #define MJL_DEBUG_COLORS /* Cycle through all of the colors */
   #define MJL_DEBUG_BLE   /* Test the basic ble application */
 //  #define MJL_DEBUG_PWM /*  Test PWM  */
 //  #define MJL_DEBUG_TIMERS /* Test the timers */
@@ -72,13 +73,14 @@ uint32_t drv8244_current_from_voltage(drv8244_state_s *const, float32_t voltage)
 
 
 /* Global Variables */
+MLJ_UART_S usb;
 volatile bool flag_timer_second;
 volatile bool flag_adc;
-MLJ_UART_S usb;
-MJL_SPI_S spi;
-max31856_state_s tempSense;
-drv8244_state_s drv;
 system_time_s time;
+
+//MJL_SPI_S spi;
+//max31856_state_s tempSense;
+//drv8244_state_s drv;
 
 /* ISR Declarations */
 void isr_adc(void);
@@ -95,27 +97,72 @@ void breatheLed_setState(bool state);
 ********************************************************************************
 * Summary:
 *   The top-level application function for the project.
+  
+  // Enable CM4.  CY_CORTEX_M4_APPL_ADDR must be updated if CM4 memory layout is changed.
+  //  Cy_SysEnableCM4(CY_CORTEX_M4_APPL_ADDR); 
 *
 *******************************************************************************/
-int main(void) {
-
+int main(void) {  
   initHardware();
-  uart_printHeader(&usb, "MJL_TEMPLATE_MAIN", __DATE__, __TIME__);
+    /* Start ble */
+  uart_printHeader(&usb, "MJL_DRIVEBOT_MAIN", __DATE__, __TIME__);
   CyDelay(10);
   uart_println(&usb, "");
   uart_println(&usb,"* Press 'Enter' to reset");
-  /* Enable CM4.  CY_CORTEX_M4_APPL_ADDR must be updated if CM4 memory layout is changed. */
-  //  Cy_SysEnableCM4(CY_CORTEX_M4_APPL_ADDR); 
+  uart_println(&usb, "");
   
-  for(;;){
+  /* Start the BLE component */
+  Cy_BLE_Start(bleApp_eventCallback);
+  /********* Set the initial states *********/
+  /* LED */
+  bleApp_led_update_state(false, true);
+  /* RGB */
+  bleApp_rgb_update_state(0, 0, 50, true);
+  /* Motor Enable */
+  bleApp_motorEnable_update_state(false, false, true);
+  /* Motor Effort */
+  bleApp_motorEffort_update_state(500, 500, true);
+  
+  /* Encoder */
+  int32_t encoder_left = 0;
+  int32_t encoder_left_prev = 0;
+  int32_t encoder_right = 0;
+  int32_t encoder_right_prev = 0;
+  
+  /* Read the button state */
+  bool stateBtn = false;
+  bool stateBtn_prev = false;
+  
+  for(;;) {
     /* Handle the UART */
     uint8_t readVal = 0;
     uint32_t readError = uart_read(&usb, &readVal);
-    if(!readError) {
+    if(!readError) {              
       /* Reset on Enter */
       if('\r' == readVal) {hal_reset_device(&usb);}
     }
-  }    
+    /* Handle the encoders */
+    hal_encoder_read_left(&encoder_left);
+    hal_encoder_read_right(&encoder_right);      
+    if((encoder_left != encoder_left_prev) || (encoder_right != encoder_right_prev)){
+      encoder_left_prev = encoder_left;
+      encoder_right_prev = encoder_right;
+      bleApp_encoder_update_state(encoder_left, encoder_right);
+    }
+    /* Handle the button */
+    stateBtn = Cy_GPIO_Read(pin_BTN_0_PORT, pin_BTN_0_NUM);
+    if(stateBtn != stateBtn_prev){
+      stateBtn_prev = stateBtn;
+      /* Toggle on release */
+      if(stateBtn == false){
+        uart_println(&usb, "Button release");
+        /* Change the RGB color if advertising */
+        bleApp_advertise_cycle_rgb();
+      }
+    }    
+    /* Handle ble events */
+    Cy_BLE_ProcessEvents();
+  }
 }
 #endif /* ifndef MJL_DEBUG*/
 /* End Main Program */
@@ -131,7 +178,7 @@ int main(void) {
 *******************************************************************************/
 int main(void){
   #warning "MJL_DEBUG is enabled"
-  initHardware();
+
   
   /* Test Cases */
   #ifdef MJL_DEBUG_LED
@@ -285,6 +332,43 @@ int main(void){
         }
       }
     }
+  #elif defined MJL_DEBUG_COLORS 
+    /* Cycle through all of the colors */
+    uart_printHeader(&usb, "MJL_DEBUG_COLORS", __DATE__, __TIME__);
+    CyDelay(10);
+    uart_println(&usb, "");
+    uart_println(&usb,"* Press 'Enter' to reset");
+    uart_println(&usb,"* Press 'Space' to cycle through colors");
+    uart_println(&usb, "");
+
+    uint8_t color_index = 0;
+    uint8_t color_index_prev = 1;
+    
+    for(;;) {
+      /* Service the UART */
+      uint8_t readVal = 0;
+      uint32_t readError = uart_read(&usb, &readVal);
+      if(!readError) {               
+        /* Reset on Enter */
+        if('\r' == readVal) {hal_reset_device(&usb);}
+        /* Cycle through the colors */
+        else if (' ' == readVal) {
+          color_index++;
+          if(ADVERTISING_COLORS_LEN <= color_index){
+            color_index = 0; 
+          }
+        }
+      }
+      /* Handle the colors */
+      if(color_index != color_index_prev){
+        color_index_prev = color_index;
+        uint32_t colorWord = advertisingColors[color_index];
+        hal_rgb_set_duty_word(colorWord);
+        uart_printlnf(&usb, "Color index: %u", color_index);
+      }
+
+    }
+    
   #elif defined MJL_DEBUG_BLE   
     /* Start ble */
     uart_printHeader(&usb, "MJL_DEBUG_BLE", __DATE__, __TIME__);
@@ -299,7 +383,7 @@ int main(void){
     /* LED */
     bleApp_led_update_state(false, true);
     /* RGB */
-    bleApp_rgb_update_state(0, 50, 0, true);
+    bleApp_rgb_update_state(0, 0, 50, true);
     /* Motor Enable */
     bleApp_motorEnable_update_state(false, false, true);
     /* Motor Effort */

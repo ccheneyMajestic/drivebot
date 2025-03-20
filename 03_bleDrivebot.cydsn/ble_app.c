@@ -17,6 +17,7 @@ BLE_APP_S bleState = {
   /* Printing state */
   .print_stack_events = true,
   .print_write_events = true,
+  .print_hardware_events = true,
   /*********** Characteristic Config ***********/
   /* LED control */
   .ledHandle.attrHandle = CY_BLE_DRIVEBOT_SERVICE_LED_CHAR_HANDLE,
@@ -28,6 +29,8 @@ BLE_APP_S bleState = {
   .rgbHandle.value.val = bleState.rgbState,
   .rgbHandle.value.len = LEN_CHAR_RGB,
   .rgbName = "Onboard RGB",
+  /* RGB Advertisement LED */
+  .rgbAdv_index = 0,
   /* Encoder Reading */
   .encoderPosHandle.attrHandle = CY_BLE_DRIVEBOT_SERVICE_ENCODER_POSITION_CHAR_HANDLE, 
   .encoderPosHandle.value.val = (uint8_t *) bleState.encoderPosState,
@@ -46,6 +49,8 @@ BLE_APP_S bleState = {
   .motorEffort_name = "Motor Effort",
   
 };
+
+
 
 /*******************************************************************************
 * Function Name: bleApp_eventCallback()
@@ -70,16 +75,29 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
     ***********************************************************/
     /* Stack initialized; ready for advertisement*/
     case CY_BLE_EVT_STACK_ON: {
-      Cy_BLE_GAPP_StartAdvertisement(CY_BLE_ADVERTISING_FAST, CY_BLE_PERIPHERAL_CONFIGURATION_0_INDEX);
-      if(bleState.print_stack_events){uart_println(&usb, "BLE Stack ON");}
+      /* Start advertising */ 
+      bleApp_advertise();
       break;
     }
     /* Restart Advertisement on timeout */
     case CY_BLE_EVT_GAPP_ADVERTISEMENT_START_STOP: {
-      if(Cy_BLE_GetState() == CY_BLE_STATE_STOPPED) {
-        Cy_BLE_GAPP_StartAdvertisement(CY_BLE_ADVERTISING_FAST, CY_BLE_PERIPHERAL_CONFIGURATION_0_INDEX);
-        if(bleState.print_stack_events){uart_println(&usb, "BLE Stack Restarted");}
+      /* See the state of the advertisement */
+      cy_en_ble_adv_state_t advState = Cy_BLE_GetAdvertisementState();
+      if(advState == CY_BLE_ADV_STATE_STOPPED){
+        if(bleState.print_stack_events){uart_println(&usb, "Advertising Stopped");}
+        /* Restart advertisement */
+        bleApp_advertise();
       }
+      else if (advState == CY_BLE_ADV_STATE_ADV_INITIATED) {
+        if(bleState.print_stack_events){uart_println(&usb, "Advertising Start Initiated");}
+      }
+      else if (advState == CY_BLE_ADV_STATE_ADVERTISING){
+        if(bleState.print_stack_events){uart_println(&usb, "Advertising");}
+      }
+      else if (advState == CY_BLE_ADV_STATE_STOP_INITIATED){
+        if(bleState.print_stack_events){uart_println(&usb, "Advertising Stop Initiated");}
+      }
+
       break;
     }
     /**********************************************************
@@ -87,8 +105,11 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
     ***********************************************************/
     /* Start adversiting when disconnected */
     case CY_BLE_EVT_GAP_DEVICE_DISCONNECTED: {
-      Cy_BLE_GAPP_StartAdvertisement(CY_BLE_ADVERTISING_FAST, CY_BLE_PERIPHERAL_CONFIGURATION_0_INDEX);
       if(bleState.print_stack_events){uart_println(&usb, "BLE Device Disconnected");}
+      /* Disable the motors */
+      bleApp_motorEnable_update_state(false, false, true);
+      /* Start advertising */
+      bleApp_advertise();
       break;
     }
     /**********************************************************
@@ -98,6 +119,8 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
     is completed with the peer central device */
     case CY_BLE_EVT_GATT_CONNECT_IND: {
       bleState.connHandle = * (cy_stc_ble_conn_handle_t *) eventParam;
+      /* Update the LED */
+      bleApp_rgb_update_state(0, 50, 0, true);
       if(bleState.print_stack_events){uart_println(&usb, "BLE Device Connected");}
       break;
     }
@@ -132,6 +155,16 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
       }
       break;
     }
+    /* Write without response */
+    case CY_BLE_EVT_GATTS_WRITE_CMD_REQ: {
+      cy_stc_ble_gatts_write_cmd_req_param_t writeParam = *(cy_stc_ble_gatts_write_cmd_req_param_t *) eventParam;
+      cy_stc_ble_gatt_value_t* write_request = &writeParam.handleValPair.value;      
+      cy_ble_gatt_db_attr_handle_t attributeHandle = writeParam.handleValPair.attrHandle;
+      if (attributeHandle == bleState.motorEffort_handle.attrHandle){
+        bleApp_motorEffort_write_request_handler(write_request); 
+      }
+      break;
+    }
           
     /* Unhandled event */
     default: {
@@ -140,6 +173,87 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
     /* End EventCode Switch */
   }
 }
+
+/*******************************************************************************
+* Function Name: bleApp_advertise()
+********************************************************************************
+* \brief
+*   Initiate Advertising
+*
+* \return
+*  Error code of the operation 
+*******************************************************************************/
+uint32_t bleApp_advertise(){
+  uint32_t error = 0;
+  /* Get the state of the stack */ 
+  cy_en_ble_state_t ble_state = Cy_BLE_GetState();
+  if(ble_state != CY_BLE_STATE_ON){error |= 1;}
+  
+  if(!error){
+    /* Get the current state */
+    cy_en_ble_adv_state_t advState = Cy_BLE_GetAdvertisementState();
+    /* Was not advertising, start now */
+    if(advState == CY_BLE_ADV_STATE_STOPPED){
+
+      /* Start Advertising */
+      if(bleState.print_stack_events){uart_println(&usb, "Starting Advertisement");}
+      error = Cy_BLE_GAPP_StartAdvertisement(CY_BLE_ADVERTISING_FAST, CY_BLE_PERIPHERAL_CONFIGURATION_0_INDEX);
+      /* Get the next color  */
+      error = bleApp_advertise_cycle_rgb();
+    }
+  }
+  if(error){
+    uart_printlnf(&usb, "Error in bleApp_advertise():%u", error);
+  }
+  return error;
+}
+
+/*******************************************************************************
+* Function Name: bleApp_advertise_cycle_rgb()
+********************************************************************************
+* \brief
+*   Advance to the next advertising color for the RGB and update the scan response
+*   packet with the new color
+*
+* \return
+*  Error code of the operation 
+*******************************************************************************/
+uint32_t bleApp_advertise_cycle_rgb(void){
+  uint32_t error = 0;
+  /* Get the state of the stack */ 
+  if(Cy_BLE_GetState() != CY_BLE_STATE_ON){error |= 1;}
+  if(CY_BLE_ADV_STATE_STOPPED == Cy_BLE_GetAdvertisementState()){error |= 2;}
+
+  if(!error){
+    /* Update the state */
+    uint8_t index = bleState.rgbAdv_index;
+    uart_printlnf(&usb, "Cycling advertising RGB %u", index);
+    uint32_t rgbWord = advertisingColors[index];
+    bleState.rgbAdv_index++;
+    if(bleState.rgbAdv_index >= ADVERTISING_COLORS_LEN){bleState.rgbAdv_index = 0;}
+    /* Update the hardware */
+    uint8_t red, green, blue;
+    hal_rgb_get_duty_word(rgbWord, &red, &green, &blue);
+    bleApp_rgb_update_state(red, green, blue, true);
+    /* Update the Scan response data to include the color */ 
+    cy_stc_ble_gapp_disc_mode_info_t advScanParams;
+    cy_ble_scanRspData->scanRspData[SCAN_RESPONSE_RGB_INDEX_RED]=red;
+    cy_ble_scanRspData->scanRspData[SCAN_RESPONSE_RGB_INDEX_GREEN]=green;
+    cy_ble_scanRspData->scanRspData[SCAN_RESPONSE_RGB_INDEX_BLUE]=blue;
+    advScanParams.scanRspData = cy_ble_scanRspData;
+    /* Don't change the existing Advertisement data */
+    advScanParams.advData = cy_ble_discoveryData; 
+    /* Execute the update */
+    error = Cy_BLE_GAPP_UpdateAdvScanData(&advScanParams);
+ 
+  }
+  if(error && bleState.print_hardware_events){
+    uart_printlnf(&usb, "Bad Cycle Advertise RGB error: %u", error);
+  }
+    
+  return error;
+}
+
 
 /*******************************************************************************
 * Function Name: bleApp_updateBleDatabase()
@@ -281,6 +395,9 @@ uint32_t bleApp_motorEnable_write_request_handler(cy_stc_ble_gatt_value_t* write
     /* Call the State Updater */
     error |= bleApp_motorEnable_update_state(left, right, false);
   }
+  if(error && bleState.print_write_events){
+    uart_printlnf(&usb, "Bad Motor Enable write request, received len:%u expected:%u", write_request->len, LEN_CHARACTERISTIC_MOTOR_ENABLE); 
+  }
   return error;
 }
 
@@ -299,7 +416,8 @@ uint32_t bleApp_motorEnable_write_request_handler(cy_stc_ble_gatt_value_t* write
 uint32_t bleApp_motorEffort_write_request_handler(cy_stc_ble_gatt_value_t* write_request){
   uint32_t error = 0;
   /* Validate Request */
-  if((LEN_CHARACTERISTIC_MOTOR_EFFORT * sizeof(int16_t)) != write_request->len){error |= 1;}
+  uint8_t expected_len = LEN_CHARACTERISTIC_MOTOR_EFFORT * sizeof(int16_t);
+  if(expected_len != write_request->len){error |= 1;}
   /* Unpack the request and update the state */
   if(!error){
     int16_t left;
@@ -310,7 +428,7 @@ uint32_t bleApp_motorEffort_write_request_handler(cy_stc_ble_gatt_value_t* write
     error |= bleApp_motorEffort_update_state(left, right, false);
   }
   if(error && bleState.print_write_events){
-    uart_printlnf(&usb, "Bad Motor Effort write request, len:%u", write_request->len); 
+    uart_printlnf(&usb, "Bad Motor Effort write request, received len:%u expected:%u", write_request->len, expected_len); 
   }
   return error;
 }
@@ -412,6 +530,9 @@ uint32_t bleApp_rgb_update_state(uint8_t red, uint8_t green, uint8_t blue, bool 
 *******************************************************************************/
 uint32_t bleApp_motorEnable_update_state(bool left, bool right, bool was_locally_initiated){
   uint32_t error = 0; 
+  /* Update the onboard led to match the motor enable state */
+  bool motors_enabled = left || right;
+  error = bleApp_led_update_state(motors_enabled, was_locally_initiated);
   /* Update the Hardware */
   error |= hal_motors_enable(left, right);
   /* Update the Databases */

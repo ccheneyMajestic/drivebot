@@ -38,13 +38,19 @@
   #define MOTOR_INDEX_RIGHT  (1)
   #define MOTOR_DIRECTION_MASK      (0b0011)
   #define MOTOR_ENABLE_MASK         (0b1100)
-  #define MOTOR_ENABLE_LEFT_SHIFT   (3)
-  #define MOTOR_ENABLE_RIGHT_SHIFT  (2)
-  #define MOTOR_DIRECTION_LEFT_SHIFT (1)
-  #define MOTOR_DIRECTION_RIGHT_SHIFT (0)
+  #define MOTOR_DIRECTION_LEFT_SHIFT  (0)
+  #define MOTOR_DIRECTION_RIGHT_SHIFT (1)
+  #define MOTOR_ENABLE_LEFT_SHIFT     (2)
+  #define MOTOR_ENABLE_RIGHT_SHIFT    (3)
+
+
   #define MOTOR_EFFORT_MAX            (1000)
   #define MOTOR_EFFORT_MIN            (-1000)
-  
+  /* Advertising colors */
+  #define ADVERTISING_COLORS_LEN      (7)
+  #define RGB_SHIFT_RED               (0)
+  #define RGB_SHIFT_GREEN             (8)
+  #define RGB_SHIFT_BLUE              (16)
   /***************************************
   * Macro-like definitions
   ***************************************/
@@ -55,6 +61,7 @@
   * Forward Declarations
   ***************************************/
   extern MLJ_UART_S usb; /* Defined in main_cm0p.c */
+  extern const uint32_t advertisingColors[ADVERTISING_COLORS_LEN]; /* Defined in hal_psoc6.c */
   
   /***************************************
   * Structures 
@@ -81,6 +88,8 @@
   void hal_reset_device(MLJ_UART_S *const uart);
   uint32_t hal_led_pin_write(bool state);
   uint32_t hal_rgb_set_duty(uint8_t red, uint8_t green, uint8_t blue);
+  uint32_t hal_rgb_set_duty_word(uint32_t rgbWord);
+  uint32_t hal_rgb_get_duty_word(uint32_t rgbWord, uint8_t* red, uint8_t* green, uint8_t* blue);
   uint32_t hal_encoder_read_left(int32_t* encoder_val);
   uint32_t hal_encoder_read_right(int32_t* encoder_val);
   uint32_t hal_motors_enable(bool left, bool right);
