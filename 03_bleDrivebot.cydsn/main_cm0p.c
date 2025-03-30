@@ -31,19 +31,19 @@
 * Debugging will only occur when MJL_DEBUG is defined
 */
 #ifdef MJL_DEBUG
-//  #define MJL_DEBUG_LED            /* Test the battery charger LED */
+//  #define MJL_DEBUG_LED             /* Test the battery charger LED */
 //  #define MJL_DEBUG_UART            /* Test the UART Connection */
-  #define MJL_DEBUG_BTN /* Test the button */
-//  #define MJL_DEBUG_ENCODERS /* Test the encoders */
-//  #define MJL_DEBUG_MOTORS /* Press the button to toggle motors */
-//  #define MJL_DEBUG_COLORS /* Cycle through all of the colors */
-  #define MJL_DEBUG_BLE   /* Test the basic ble application */
-//  #define MJL_DEBUG_PWM /*  Test PWM  */
-//  #define MJL_DEBUG_TIMERS /* Test the timers */
-//  #define MJL_DEBUG_ADC               /* Read the ADC */
-//  #define MJL_DEBUG_ADC_INT          /* Read the ADC using the interrupt flag */
-//  #define MJL_DEBUG_ADC_AVG          /* Read the ADC and average in software */
-//  #define MJL_DEBUG_SYSTEM_COUNTER      /* Test using the microsecond counter */
+//  #define MJL_DEBUG_BTN             /* Test the button */
+//  #define MJL_DEBUG_ENCODERS        /* Test the encoders */
+//  #define MJL_DEBUG_MOTORS          /* Press the button to toggle motors */
+//  #define MJL_DEBUG_COLORS          /* Cycle through all of the colors */
+//  #define MJL_DEBUG_FLASH           /* Test reading and writing from flash */
+//  #define MJL_DEBUG_BLE             /* Test the basic ble application */
+  #define MJL_DEBUG_BREATHE         /* Breathe the RGB LED*/
+//  #define MJL_DEBUG_ADC               /* TODO: Read the ADC */
+//  #define MJL_DEBUG_ADC_INT          /* TODO: Read the ADC using the interrupt flag */
+//  #define MJL_DEBUG_ADC_AVG          /* TODO: Read the ADC and average in software */
+//  #define MJL_DEBUG_SYSTEM_COUNTER      /* TODO: Test using the microsecond counter */
 #endif
 /* -------------- END DEBUG CASE --------------  */
 
@@ -74,21 +74,21 @@ uint32_t drv8244_current_from_voltage(drv8244_state_s *const, float32_t voltage)
 
 /* Global Variables */
 MLJ_UART_S usb;
-volatile bool flag_timer_second;
-volatile bool flag_adc;
-system_time_s time;
+alpha_dimmer_s dimmer_rgb;
 
-//MJL_SPI_S spi;
-//max31856_state_s tempSense;
-//drv8244_state_s drv;
+//volatile bool flag_timer_second = false;
+//volatile bool flag_adc = false;
+//system_time_s time;
 
 /* ISR Declarations */
+void isr_rgb_breathe(void);
 void isr_adc(void);
 void isr_second(void);
 
 /* Function Definitions */
 uint32_t initHardware(void);
-void breatheLed_setState(bool state);
+uint32_t process_rgb_breathing(alpha_dimmer_s* state);
+
 
 /* Main Program */
 #ifndef MJL_DEBUG
@@ -111,13 +111,27 @@ int main(void) {
   uart_println(&usb,"* Press 'Enter' to reset");
   uart_println(&usb, "");
   
+  
+  /* Configure the state object */
+  bleState.breathing = &dimmer_rgb;
   /* Start the BLE component */
   Cy_BLE_Start(bleApp_eventCallback);
+  CyDelay(10);
+  /* Delay to wait for the BLE stack to finish startup Flash operations, which take ~2 ms.
+     This is an inelegant way to do so, but I can't find a way of reading the current flash state.
+     Presumably this is because the BLE stack is using async flash operations, which don't play well
+     the synchronous flash operations. No BLE stack event is generated that clearly indicates Flash
+     operations are complete, so a blocking delay appears to be the simplest solution. */
+  
   /********* Set the initial states *********/
+  /* Read the ID from flash -- Input parameter is ignored */
+  bleApp_id_update_state(0, true);
   /* LED */
   bleApp_led_update_state(false, true);
   /* RGB */
-  bleApp_rgb_update_state(0, 0, 50, true);
+  rgb_s flash_color = color_off;
+  hal_flash_rgb_read(&flash_color);
+  bleApp_rgb_update_state(&flash_color, true, false);
   /* Motor Enable */
   bleApp_motorEnable_update_state(false, false, true);
   /* Motor Effort */
@@ -156,10 +170,13 @@ int main(void) {
       /* Toggle on release */
       if(stateBtn == false){
         uart_println(&usb, "Button release");
-        /* Change the RGB color if advertising */
-        bleApp_advertise_cycle_rgb();
+        /* Change the RGB color */
+        bleApp_cycle_rgb();
       }
     }    
+    /* Handle the rgb dimming */
+    process_rgb_breathing(bleState.breathing);
+    
     /* Handle ble events */
     Cy_BLE_ProcessEvents();
   }
@@ -178,24 +195,35 @@ int main(void) {
 *******************************************************************************/
 int main(void){
   #warning "MJL_DEBUG is enabled"
-
+  initHardware();
   
   /* Test Cases */
   #ifdef MJL_DEBUG_LED
-    /* Cycle the RGB LED */    
-    uint8_t brightness = 25;
+    /* Cycle the RGB LED */   
+    rgb_s rgb ={
+      .alpha = 25 
+    };
     for(;;) {
-        hal_rgb_set_duty(brightness, 0, 0);
-        CyDelay(500);
-        hal_rgb_set_duty(0, brightness, 0);
-        CyDelay(500);
-        hal_rgb_set_duty(0, 0, brightness);
-        CyDelay(500);   
-        /* Increase the brightness */
-        brightness += 25;
-        if(brightness > 100){
-            brightness = 25;
-        }
+      /* Red */
+      rgb.red = 0xff;
+      rgb.green = 0;
+      rgb.blue = 0;
+      hal_rgb_set_color(&rgb);
+      CyDelay(500);
+      /* Green */
+      rgb.red = 0;
+      rgb.green = 0xff;
+      rgb.blue = 0;
+      hal_rgb_set_color(&rgb);
+      CyDelay(500);
+      /* Blue */
+      rgb.red = 0;
+      rgb.green = 0;
+      rgb.blue = 0xff;
+      hal_rgb_set_color(&rgb);
+      CyDelay(500);   
+      /* Increase the brightness */
+      rgb.alpha += 25;
     }
   /* End MJL_DEBUG_LED */
   #elif defined MJL_DEBUG_UART             
@@ -205,17 +233,17 @@ int main(void){
   uart_println(&usb, "");
   uart_println(&usb,"* Press 'Enter' to reset");
   uart_println(&usb, "");
-  hal_rgb_set_duty(0, 0, 50);
+  hal_rgb_set_color(&color_red);
 
   for(;;) {
-    uint8_t readVal = 0;
-    uint32_t readError = uart_read(&usb, &readVal);
-    if(!readError) {
-      /* Echo UART */
-      uart_write(&usb, readVal);                
-      /* Reset on Enter */
-      if('\r' == readVal) {hal_reset_device(&usb);}
-    }
+//    uint8_t readVal = 0;
+//    uint32_t readError = uart_read(&usb, &readVal);
+//    if(!readError) {
+//      /* Echo UART */
+//      uart_write(&usb, readVal);                
+//      /* Reset on Enter */
+//      if('\r' == readVal) {hal_reset_device(&usb);}
+//    }
   }
   #elif defined MJL_DEBUG_BTN
     /* Test the button */
@@ -224,7 +252,7 @@ int main(void){
     uart_println(&usb, "");
     uart_println(&usb,"* Press 'Enter' to reset");
     uart_println(&usb, "");
-    hal_rgb_set_duty(0, 0, 50);
+    hal_rgb_set_color(&color_blue);
 
     /* Read the button state */
     bool stateBtn = false;
@@ -254,7 +282,7 @@ int main(void){
     uart_println(&usb, "");
     uart_println(&usb,"* Press 'Enter' to reset");
     uart_println(&usb, "");
-    hal_rgb_set_duty(0, 0, 50);
+    hal_rgb_set_color(&color_blue);
         
     int32_t encoder_left = 0;
     int32_t encoder_left_prev = 0;
@@ -287,7 +315,7 @@ int main(void){
     uart_println(&usb,"* Press 'Enter' to reset");
     uart_println(&usb,"* Press 'Space' to Cycle through the motor states");
     uart_println(&usb, "");
-    hal_rgb_set_duty(50,0,0);
+    hal_rgb_set_color(&color_red);
     
     #define MOTOR_STATE_DISABLED    (0)
     #define MOTOR_STATE_FORWARD     (1)
@@ -316,19 +344,19 @@ int main(void){
         if(MOTOR_STATE_DISABLED == motor_state){
           uart_println(&usb, "Motors Disabled"); 
           hal_motors_enable(false, false);
-          hal_rgb_set_duty(50,0,0);
+          hal_rgb_set_color(&color_red);
         }
         else if (MOTOR_STATE_FORWARD == motor_state){
           uart_println(&usb, "Motors Forward");
           hal_motors_enable(true, true);
           hal_motors_set_effort(1000, 1000);
-          hal_rgb_set_duty(0,50,0);
+          hal_rgb_set_color(&color_green);
         }
         else if (MOTOR_STATE_REVERSE == motor_state){
           uart_println(&usb, "Motors Reverse");
           hal_motors_enable(true, true);
           hal_motors_set_effort(-1000, -1000);          
-          hal_rgb_set_duty(0,0,50);
+          hal_rgb_set_color(&color_blue);
         }
       }
     }
@@ -354,7 +382,7 @@ int main(void){
         /* Cycle through the colors */
         else if (' ' == readVal) {
           color_index++;
-          if(ADVERTISING_COLORS_LEN <= color_index){
+          if(BASE_COLORS_LEN <= color_index){
             color_index = 0; 
           }
         }
@@ -362,13 +390,125 @@ int main(void){
       /* Handle the colors */
       if(color_index != color_index_prev){
         color_index_prev = color_index;
-        uint32_t colorWord = advertisingColors[color_index];
-        hal_rgb_set_duty_word(colorWord);
+        const rgb_s* color = rgb_base_colors[color_index];
+        hal_rgb_set_color(color);
         uart_printlnf(&usb, "Color index: %u", color_index);
       }
 
     }
+  #elif defined MJL_DEBUG_BREATHE        
+    /* Breathe the RGB LED*/
+    uart_printHeader(&usb, "MJL_DEBUG_BREATHE", __DATE__, __TIME__);
+    CyDelay(10);
+    uart_println(&usb, "");
+    uart_println(&usb,"* Press 'Enter' to reset");
+    uart_println(&usb,"* Press 'c' to cycle through colors");
+    uart_println(&usb,"* Press 'Space' to toggle breathing");
+    uart_println(&usb, "");
     
+    rgb_s color;
+    uint8_t base_index = 0;
+    /* Read the color stored in flash */
+    hal_flash_rgb_read(&color);
+    /* Set the new color */
+    hal_rgb_set_color(&color);
+    /* Find the index of the color */
+    uint8_t match_index;
+    uint32_t match_error = rgb_get_base_color_index(&color, &match_index);
+    if(!match_error) {
+      uart_printlnf(&usb, "Match index found: %u", match_index);    
+      base_index = match_index +1;
+    } else {
+      uart_printlnf(&usb, "Match error: 0x%x", match_error);    
+    }
+    
+    for(;;) {
+      /* Service the UART */
+      uint8_t readVal = 0;
+      uint32_t readError = uart_read(&usb, &readVal);
+      if(!readError) {               
+        /* Reset on Enter */
+        if('\r' == readVal) {hal_reset_device(&usb);}
+        /* Toggle breathing */
+        else if (' ' == readVal) {
+          dimmer_rgb.is_active = !dimmer_rgb.is_active;
+        }
+        /* Cycle through the colors */
+        else if ('c' == readVal) {
+          uart_printlnf(&usb, "Color index: %u", base_index);
+          color = *rgb_base_colors[base_index];
+          /* Update the RGB */
+          hal_rgb_set_color(&color);
+          /* Save to flash */
+          hal_flash_rgb_write(&color);
+          /* Increment the index */
+          base_index++;
+          if(base_index >= BASE_COLORS_LEN){
+            base_index = 0;
+          }
+        }
+      }
+      /* Handle the breathing in software */
+      process_rgb_breathing(&dimmer_rgb);
+    }
+    
+  #elif defined MJL_DEBUG_FLASH   
+    /* Read and write to flash */
+    uart_printHeader(&usb, "MJL_DEBUG_FLASH", __DATE__, __TIME__);
+    uart_println(&usb, "");
+    uart_println(&usb,"* Press 'enter'to reset the device");
+    uart_println(&usb,"* Press 'space' to increment the control word in RAM");
+    uart_println(&usb,"* Press 'w' to Write the control word to flash");
+    uart_println(&usb,"* Press 'r' to Read the control word from flash");
+    uart_println(&usb,"* Press 'i' to Read the robot ID from flash");
+    uart_println(&usb,"* Press 's' to increment and write the robot ID from flash");
+    uart_println(&usb, "");
+    hal_rgb_set_color(&color_blue);
+    
+    
+    #define FLASH_CONTROL_WORD_ADDR     (0)/* Address of the control word in EM Flash */
+    #define FLASH_CONTROL_WORD_LEN      (1) /* Length of the data of the control word */
+    
+    uint8_t controlWord;
+    uint8_t id;
+    
+    cy_en_em_eeprom_status_t returnVal;
+    returnVal = eeprom_Read(FLASH_CONTROL_WORD_ADDR, &controlWord, FLASH_CONTROL_WORD_LEN);
+    uart_printlnf(&usb, "Read returnVal: 0x%x", returnVal);
+    uart_printlnf(&usb, "Control word at boot: 0x%x", controlWord);
+    
+    for(;;) {
+      /* Handle the UART */
+      uint8_t readVal = 0;
+      uint32_t readError = uart_read(&usb, &readVal);
+      if(!readError) {
+        /* Reset on Enter */
+        if('\r' == readVal) {
+          hal_reset_device(&usb);
+        }
+        else if (' ' == readVal){
+          controlWord +=1;
+          uart_printlnf(&usb, "New control word: 0x%x", controlWord);
+        }
+        else if ('w' == readVal){
+          returnVal = eeprom_Write(FLASH_CONTROL_WORD_ADDR, &controlWord, FLASH_CONTROL_WORD_LEN);
+          uart_printlnf(&usb, "Write: 0x%x, returnVal: 0x%x", controlWord, returnVal);
+        }
+        else if ('r' == readVal){
+          returnVal = eeprom_Read(FLASH_CONTROL_WORD_ADDR, &controlWord, FLASH_CONTROL_WORD_LEN);
+          uart_printlnf(&usb, "Read: 0x%x, returnVal: 0x%x", controlWord, returnVal);
+        }
+        else if ('i' == readVal){
+          uint32_t error = hal_flash_id_read(&id);
+          uart_printlnf(&usb, "Read ID: 0x%x, returnVal: 0x%x", id, error);
+        }
+        else if ('s' == readVal) {
+          uint32_t error = hal_flash_id_write(++id);
+          uart_printlnf(&usb, "Writing ID: 0x%x, returnVal: 0x%x", id, error); 
+        }
+      }
+    }
+
   #elif defined MJL_DEBUG_BLE   
     /* Start ble */
     uart_printHeader(&usb, "MJL_DEBUG_BLE", __DATE__, __TIME__);
@@ -383,7 +523,7 @@ int main(void){
     /* LED */
     bleApp_led_update_state(false, true);
     /* RGB */
-    bleApp_rgb_update_state(0, 0, 50, true);
+    bleApp_rgb_update_state(&color_blue, true);
     /* Motor Enable */
     bleApp_motorEnable_update_state(false, false, true);
     /* Motor Effort */
@@ -414,41 +554,7 @@ int main(void){
       /* Process ble events */
       Cy_BLE_ProcessEvents();
     }
-  #elif defined MJL_DEBUG_PWM           
-    /* Basic usage the DRV driver chip */
-    uart_printHeader(&usb, "MJL_DEBUG_DRV", __DATE__, __TIME__);
-    CyDelay(10);
-    uart_println(&usb, "");
-    uart_println(&usb, "* Press ' ' to toggle PWM");
-    uart_println(&usb, "");
-          
-    bool pwmState = false;
-    bool prevPwmState = true;
-        
-    for(;;) {
-      /* Check for UART input */
-      uint8_t readVal = 0;
-      uint32_t readError = uart_read(&usb, &readVal);
-      if(readVal == ' ') {
-          pwmState = !pwmState;
-      }
-      /* Detect State Change */
-      if(pwmState != prevPwmState) {
-          prevPwmState = pwmState;
-          uart_println(&usb, CMD_CLEAR_LINEUP);
-          if(pwmState) {
-              PWM_DRV_Enable();
-              Cy_TCPWM_TriggerStart(PWM_DRV_HW, PWM_DRV_CNT_MASK);
-              breatheLed_setState(true);
-          }
-          else {
-              PWM_DRV_Disable();
-              breatheLed_setState(false);
-          }
-          uart_printlnf(&usb, "PWM Enabled: %b", pwmState);
-        }
-    }
-  /* End MJL_DEBUG_PWM */
+   
   #elif defined MJL_DEBUG_TIMERS 
     /* Test the timers */
         /* Basic usage the DRV driver chip */
@@ -592,11 +698,20 @@ int main(void){
 *******************************************************************************/
 uint32_t initHardware(void) {
   uint32_t error = 0;
-    
-  /* Start the RGB led */
+  /* Disable the CM4 — The CM4 Core MUST be either explicitly Enabled or Disabled to read from EEPROM */
+  Cy_SysDisableCM4();
+  /* Start the rgb pwm blocks */
   pwm_led_R_Start();
   pwm_led_G_Start();
   pwm_led_B_Start();
+  pwm_led_alpha_Start();
+  
+  /* Start the Breathing timer */
+  Cy_SysInt_Init(&interrupt_rgb_breathe_cfg, isr_rgb_breathe);
+  NVIC_ClearPendingIRQ(interrupt_rgb_breathe_cfg.intrSrc);
+  NVIC_EnableIRQ(interrupt_rgb_breathe_cfg.intrSrc);
+  timer_rgb_breathe_Start();
+  dimmer_rgb = dimmer_default;
 
   /* Start the UART */
   MJL_UART_CFG_S uartCfg = uart_cfg_default;
@@ -616,6 +731,11 @@ uint32_t initHardware(void) {
   pwm_right_Start();    
   pwm_left_SetCompare0(1000);
   pwm_right_SetCompare0(1000);
+  
+  /* Initialize EEPROM */
+  /* Must update the CM4 linker script (cy8c6xx7_cm4_dual.ld) and remove the '.cy_em_eeprom' entry to 
+    allow the CM0+ core exclusive access to the eeprom storage */
+  error |= eeprom_Init((uint32_t)eeprom_em_EepromStorage); /* Argument has no effect on PSoC6 when using Emulated EEPROM */
    
 //  /*Connect the microsecond timer to the second interrupt */
 //  Cy_SysInt_Init(&interrupt_second_cfg, isr_second);
@@ -637,48 +757,108 @@ uint32_t initHardware(void) {
   return error;
 }
 
-/*******************************************************************************
-* Function Name: isr_second()
-********************************************************************************
-* \brief
-*   Triggers after 1 second
-*
-*******************************************************************************/
-void isr_second(void){
-  flag_timer_second = true;
-  counter_microsecond_ClearInterrupt(CY_TCPWM_INT_ON_TC);
-  NVIC_ClearPendingIRQ(interrupt_second_cfg.intrSrc);
-}
-
 
 /*******************************************************************************
-* Function Name: isr_adc()
+* Function Name: process_rgb_breathing()
 ********************************************************************************
 * \brief
-*   Triggers when the ADC End of Scan is complete (EOS)
+*   Handles software-based RGB breathing effect by adjusting the alpha value 
+*   over time. Reverses direction when min/max bounds are reached.
 *
-*******************************************************************************/
-void isr_adc(void) {
-  flag_adc = true;
-  NVIC_ClearPendingIRQ(interrupt_adc_cfg.intrSrc);
-}
-
-/*******************************************************************************
-* Function Name: get_system_time_atomic()
-********************************************************************************
-* \brief
-*   Atomically updates the system time state structure passed in 
+* \param state [in,out]
+*   Pointer to the alpha dimmer state structure containing breathing parameters.
 *
-*******************************************************************************/
-uint32_t get_system_time_atomic(system_time_s *const state){
- uint32_t error = 0;
-  /* Get atomically */
-  uint8_t intr_state = Cy_SysLib_EnterCriticalSection();
-  state->microsecond = Cy_TCPWM_Counter_GetCounter(counter_microsecond_HW, counter_microsecond_CNT_NUM);
-  state->second = Cy_TCPWM_Counter_GetCounter(counter_second_HW, counter_second_CNT_NUM);
-  Cy_SysLib_ExitCriticalSection(intr_state);
+* \return
+*   Bitmask error code (0 for success; non-zero indicates failure).
+*******************************************************************************/  
+uint32_t process_rgb_breathing(alpha_dimmer_s* state) { 
+  uint32_t error = 0;
+  if(state==NULL){error|=1;}
+  
+  if(!error){
+    /* Handle the updated breathing state */
+    if(state->is_active != state->is_active_prev){
+      state->is_active_prev = state->is_active;
+      uart_printlnf(&usb, "Breathing: %b", state->is_active);
+      /* Full alpha when not breathing */
+      if(!state->is_active) {hal_rgb_set_alpha(ALPHA_MAX);}
+    }
+    /* Handle the breathing in software */
+    if(state->is_active && state->flag_timer_breathe){
+      state->flag_timer_breathe = false;
+      /* Update the current alpha value */
+      hal_rgb_set_alpha(state->val);
+      /* Step alpha forward */
+      state->val += state->delta;
+      /* Clip to range */
+      if(state->val >= ALPHA_MAX){
+        state->val = ALPHA_MAX;
+        state->delta *= -1;
+      }
+      else if (state->val <= 0) {
+        state->val = 0;
+        state->delta *= -1;
+      }
+    }
+  }
   return error;
 }
+
+/*******************************************************************************
+* Function Name: isr_rgb_breathe()
+********************************************************************************
+* \brief
+*   Breath the RGB by updating the led
+*
+*******************************************************************************/
+void isr_rgb_breathe(void){
+  dimmer_rgb.flag_timer_breathe = true;
+  timer_rgb_breathe_ClearInterrupt(CY_TCPWM_INT_ON_TC);
+  NVIC_ClearPendingIRQ(interrupt_rgb_breathe_cfg.intrSrc);
+}
+
+///*******************************************************************************
+//* Function Name: isr_second()
+//********************************************************************************
+//* \brief
+//*   Triggers after 1 second
+//*
+//*******************************************************************************/
+//void isr_second(void){
+//  flag_timer_second = true;
+//  counter_microsecond_ClearInterrupt(CY_TCPWM_INT_ON_TC);
+//  NVIC_ClearPendingIRQ(interrupt_second_cfg.intrSrc);
+//}
+
+
+///*******************************************************************************
+//* Function Name: isr_adc()
+//********************************************************************************
+//* \brief
+//*   Triggers when the ADC End of Scan is complete (EOS)
+//*
+//*******************************************************************************/
+//void isr_adc(void) {
+//  flag_adc = true;
+//  NVIC_ClearPendingIRQ(interrupt_adc_cfg.intrSrc);
+//}
+
+///*******************************************************************************
+//* Function Name: get_system_time_atomic()
+//********************************************************************************
+//* \brief
+//*   Atomically updates the system time state structure passed in 
+//*
+//*******************************************************************************/
+//uint32_t get_system_time_atomic(system_time_s *const state){
+// uint32_t error = 0;
+//  /* Get atomically */
+//  uint8_t intr_state = Cy_SysLib_EnterCriticalSection();
+//  state->microsecond = Cy_TCPWM_Counter_GetCounter(counter_microsecond_HW, counter_microsecond_CNT_NUM);
+//  state->second = Cy_TCPWM_Counter_GetCounter(counter_second_HW, counter_second_CNT_NUM);
+//  Cy_SysLib_ExitCriticalSection(intr_state);
+//  return error;
+//}
 
 
 

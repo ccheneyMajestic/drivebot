@@ -23,15 +23,17 @@
   /***************************************
   * Macro Definitions
   ***************************************/
+  #define LEN_CHARACTERISTIC_ID             (1) /* Length of the ID characterisitc */
   #define LEN_CHAR_LED                      (1) /* Length of the LED control characteristic */
   #define LEN_CHAR_RGB                      (3) /* Length of the (R, G, B) led */
   #define LEN_CHARACTERISTIC_ENCODER_POS    (2) /* Number of elements in the encoder position */
   #define LEN_CHARACTERISTIC_MOTOR_ENABLE   (2) /* Number of elements in the motor enable word */
   #define LEN_CHARACTERISTIC_MOTOR_EFFORT   (2) /* Number of elements in the control effort  */
   /* Scan Response packet */
-  #define SCAN_RESPONSE_RGB_INDEX_RED       (22) /* Index of the RED led in the scan response packet */
-  #define SCAN_RESPONSE_RGB_INDEX_GREEN     (23) /* Index of the GREEN led in the scan response packet */
-  #define SCAN_RESPONSE_RGB_INDEX_BLUE      (24) /* Index of the BLUE led in the scan response packet */
+  #define SCAN_RESPONSE_RGB_BASE            (22) /* Base index of the RGB word in the scan response packet */
+  #define SCAN_RESPONSE_RGB_INDEX_RED       (SCAN_RESPONSE_RGB_BASE + RGB_INDEX_RED) /* Index of the RED led in the scan response packet */
+  #define SCAN_RESPONSE_RGB_INDEX_GREEN     (SCAN_RESPONSE_RGB_BASE + RGB_INDEX_GREEN) /* Index of the GREEN led in the scan response packet */
+  #define SCAN_RESPONSE_RGB_INDEX_BLUE      (SCAN_RESPONSE_RGB_BASE + RGB_INDEX_BLUE) /* Index of the BLUE led in the scan response packet */
   
   /***************************************
   * Enumerated types
@@ -40,12 +42,32 @@
   /***************************************
   * Structures 
   ***************************************/
+  /* Dimming of the rgb led */
+  typedef struct {
+    bool is_active;
+    bool is_active_prev;
+    uint8_t val;
+    int8_t delta;
+    volatile bool flag_timer_breathe;
+  } alpha_dimmer_s;
+  extern const alpha_dimmer_s dimmer_default;
+  
+
+  
   typedef struct {
     cy_stc_ble_conn_handle_t connHandle; /* Connection Handle */
+    /* State Variables */
+    bool is_device_connected; /* Is there a current live BLE connection to a host */
+    rgb_s device_color;       /* Color of the device */
+    alpha_dimmer_s* breathing;   /* Dimming of the LED */
     bool print_stack_events; /* Flag indicating if stack events should print */
     bool print_write_events; /* Flag indicating if printing events should occur */ 
     bool print_hardware_events; /* Flag indicating if printing hardware driven events should occur */
     
+    /* ID of the robot */
+    cy_stc_ble_gatt_handle_value_pair_t idHandle;
+    uint8_t idState[LEN_CHARACTERISTIC_ID];
+    char* idName;
     /* Offboard LED control */
     cy_stc_ble_gatt_handle_value_pair_t ledHandle;
     uint8_t ledState[LEN_CHAR_LED];
@@ -54,8 +76,6 @@
     cy_stc_ble_gatt_handle_value_pair_t rgbHandle;
     uint8_t rgbState[LEN_CHAR_RGB];
     char* rgbName;
-    /* RGB Advertisement */
-    uint8_t rgbAdv_index;
     /* Encoder Position */
     cy_stc_ble_gatt_handle_value_pair_t encoderPosHandle;
     int32_t encoderPosState[LEN_CHARACTERISTIC_ENCODER_POS];
@@ -87,14 +107,17 @@
   uint32_t bleApp_updateBleDatabase(cy_stc_ble_gatt_handle_value_pair_t* handle, bool was_locally_initiated);
   void bleApp_printWrite(uint32_t write_error, char* name, char* message);
   /* Write request handlers */
+  uint32_t bleApp_id_write_request_handler(cy_stc_ble_gatt_value_t* write_request);
   uint32_t bleApp_led_write_request_handler(cy_stc_ble_gatt_value_t* write_request);
   uint32_t bleApp_rgb_write_request_handler(cy_stc_ble_gatt_value_t* write_request);
   uint32_t bleApp_motorEnable_write_request_handler(cy_stc_ble_gatt_value_t* write_request);
   uint32_t bleApp_motorEffort_write_request_handler(cy_stc_ble_gatt_value_t* write_request);
   /* State Updaters */
-  uint32_t bleApp_advertise_cycle_rgb(void);
+  uint32_t bleApp_cycle_rgb(void);
+  uint32_t bleApp_update_scan_response(const rgb_s* rgb);
+  uint32_t bleApp_id_update_state(uint8_t id, bool was_locally_initiated);
   uint32_t bleApp_led_update_state(bool led, bool was_locally_initiated);
-  uint32_t bleApp_rgb_update_state(uint8_t red, uint8_t green, uint8_t blue, bool was_locally_initiated);
+  uint32_t bleApp_rgb_update_state(const rgb_s* rgb, bool was_locally_initiated, bool save_flash);
   uint32_t bleApp_motorEnable_update_state(bool left, bool right, bool was_locally_initiated);
   uint32_t bleApp_motorEffort_update_state(int16_t left, int16_t right, bool was_locally_initiated);
   /* State Updaters — Read-only */

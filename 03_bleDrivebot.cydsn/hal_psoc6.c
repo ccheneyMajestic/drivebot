@@ -280,7 +280,82 @@ void hal_reset_device(MLJ_UART_S *const uart){
   NVIC_SystemReset();
 }
 
+/*******************************************************************************
+* Function Name: hal_flash_id_read()
+********************************************************************************
+* \brief
+*  Read the ID the robot stored in flash
+* 
+* \param id [out]
+* Pointer to place the result into
+*
+* \return
+*  Error code of the operation
+*******************************************************************************/
+uint32_t hal_flash_id_read(uint8_t* id){
+  uint32_t error = 0;
+  error = eeprom_Read(FLASH_ID_ADDR, id, FLASH_ID_LEN);
+  return error;
+}
 
+/*******************************************************************************
+* Function Name: hal_flash_id_write()
+********************************************************************************
+* \brief
+*  Read the ID the robot stored in flash
+* 
+* \param id [in]
+* Pointer to the value to save as the ID in flash
+*
+* \return
+*  Error code of the operation
+*******************************************************************************/
+ uint32_t hal_flash_id_write(uint8_t id){
+  uint32_t error = 0;
+  error = eeprom_Write(FLASH_ID_ADDR, &id, FLASH_ID_LEN);  
+  return error;
+}
+
+/*******************************************************************************
+* Function Name: hal_flash_rgb_read()
+********************************************************************************
+* \brief
+*  Read the RGB the robot stored in flash
+* 
+* \param id [out]
+* Pointer to place the result into
+*
+* \return
+*  Error code of the operation
+*******************************************************************************/
+uint32_t hal_flash_rgb_read(rgb_s * rgb) {
+  uint32_t error = 0;
+  error = eeprom_Read(FLASH_RGB_ADDR, rgb, FLASH_RGB_LEN);
+  /* Use a default color if none is found */
+  if(error || rgb_is_equal(rgb, &color_off)) {
+    *rgb = color_blue;
+  }
+  return error;
+}
+
+/*******************************************************************************
+* Function Name: hal_flash_rgb_write()
+********************************************************************************
+* \brief
+*  Write the RGB the robot stored in flash
+* 
+* \param id [out]
+* Pointer to place the result into
+*
+* \return
+*  Error code of the operation
+*******************************************************************************/
+uint32_t hal_flash_rgb_write(const rgb_s * rgb){
+  uint32_t error = 0;
+  /* Store to flash */
+  error = eeprom_Write(FLASH_RGB_ADDR, (void *) rgb, FLASH_RGB_LEN);
+  return error;
+}
 
 /*******************************************************************************
 * Function Name: hal_led_pin_write()
@@ -300,62 +375,32 @@ uint32_t hal_led_pin_write(bool state) {
 }
 
 /*******************************************************************************
-* Function Name: hal_rgb_set_duty()
+* Function Name: hal_rgb_set_color()
 ********************************************************************************
 * \brief
 *   Set the RGB led pwm values [0-255]
 *
 *******************************************************************************/
-uint32_t hal_rgb_set_duty(uint8_t red, uint8_t green, uint8_t blue){
-  Cy_TCPWM_PWM_SetCompare0(pwm_led_R_HW, pwm_led_R_CNT_NUM, red);
-  Cy_TCPWM_PWM_SetCompare0(pwm_led_G_HW, pwm_led_G_CNT_NUM, green);
-  Cy_TCPWM_PWM_SetCompare0(pwm_led_B_HW, pwm_led_B_CNT_NUM, blue);
-  return 0;
-}
-
-/*******************************************************************************
-* Function Name: hal_rgb_set_duty()
-********************************************************************************
-* \brief
-*   Set the RGB led pwm values from a single uint32_t [0-255]
-*
-*******************************************************************************/
-uint32_t hal_rgb_set_duty_word(uint32_t rgbWord){
+uint32_t hal_rgb_set_color(const rgb_s* rgb){
   uint32_t error = 0;
-  uint8_t red, green, blue;
-  error |= hal_rgb_get_duty_word(rgbWord, &red, &green, &blue);
-  error |= hal_rgb_set_duty(red, green, blue);
+  Cy_TCPWM_PWM_SetCompare0(pwm_led_R_HW, pwm_led_R_CNT_NUM, rgb->red);
+  Cy_TCPWM_PWM_SetCompare0(pwm_led_G_HW, pwm_led_G_CNT_NUM, rgb->green);
+  Cy_TCPWM_PWM_SetCompare0(pwm_led_B_HW, pwm_led_B_CNT_NUM, rgb->blue);
+
   return error;
 }
 
 /*******************************************************************************
-* Function Name: hal_rgb_get_duty_word()
+* Function Name: hal_rgb_set_alpha()
 ********************************************************************************
 * \brief
-*   Map and RGB word into the red, green, blue values
+*   Set the alpha channel for dimming [0-255]
 *
-* \param rgbWord [in]
-* RGB Word to use
-*
-* \param red [out]
-* Pointer to place the unpacked value into
-*
-* \param green [out]
-* Pointer to place the unpacked value into
-*
-* \param blue [out]
-* Pointer to place the unpacked value into
-*
-* \return 
-* Error code of the operation
 *******************************************************************************/
-uint32_t hal_rgb_get_duty_word(uint32_t rgbWord, uint8_t* red, uint8_t* green, uint8_t* blue){
-  *red = (uint8_t) (rgbWord >> RGB_SHIFT_RED);
-  *green = (uint8_t) (rgbWord >> RGB_SHIFT_GREEN);
-  *blue = (uint8_t) (rgbWord >> RGB_SHIFT_BLUE);
+uint32_t hal_rgb_set_alpha(uint8_t alpha){
+  Cy_TCPWM_PWM_SetCompare0(pwm_led_alpha_HW, pwm_led_alpha_CNT_NUM, alpha);
   return 0;
 }
-
 
 /*******************************************************************************
 * Function Name: hal_encoder_read_left()
@@ -456,13 +501,3 @@ uint32_t hal_motors_set_effort(int16_t left, int16_t right){
   return error;
 }
 
-/* Colors */
-const uint32_t advertisingColors[ADVERTISING_COLORS_LEN] = {
-  0x000080, /* Red */
-  0x800000, /* Blue */
-  0x008080, /* Yellow */
-  0x800080, /* Magenta */
-  0x808000, /* Cyan */
-  0x004060, /* Orange */
-  0x600040, /* Purple */
-};

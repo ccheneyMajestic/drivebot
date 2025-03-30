@@ -25,6 +25,7 @@
       <Data key="bb93c43a-a33e-406f-a8ad-27e3f95d3700" value="interrupt_second" />
       <Data key="d301e558-f13a-4f8d-9e65-cc6c3ccc7027/9260d369-b684-4310-b925-f618d77b89d7" value="uartOut_SCB_IRQ" />
       <Data key="de164eb3-a53c-4851-88c9-89685094a653" value="interrupt_encoder_right" />
+      <Data key="f0082288-f756-445b-98f8-7119b9f86c04" value="interrupt_rgb_breathe" />
       <Data key="fba323ef-d318-4e9f-9811-a8e22090f12a" value="interrupt_encoder_left" />
     </Group>
     <Group key="Pin">
@@ -118,6 +119,18 @@
         <Data key="Vector" value="-1" />
       </Group>
     </Group>
+    <Group key="1341aa1c-007f-4d8d-ad75-c8c663f46c02/b9a438dd-31dc-4d3f-932a-b92d7b255394">
+      <Group key="CortexM0p">
+        <Data key="Assigned" value="True" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="15" />
+      </Group>
+      <Group key="CortexM4">
+        <Data key="Assigned" value="False" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="-1" />
+      </Group>
+    </Group>
     <Group key="5788859e-0f03-449d-b45d-85172ebbb39f/5e509665-5bd3-4115-bbc0-fb65a49def9a">
       <Group key="CortexM0p">
         <Data key="Assigned" value="True" />
@@ -135,6 +148,54 @@
         <Data key="Assigned" value="True" />
         <Data key="Priority" value="Default" />
         <Data key="Vector" value="10" />
+      </Group>
+      <Group key="CortexM4">
+        <Data key="Assigned" value="False" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="-1" />
+      </Group>
+    </Group>
+    <Group key="d301e558-f13a-4f8d-9e65-cc6c3ccc7027/9260d369-b684-4310-b925-f618d77b89d7">
+      <Group key="CortexM0p">
+        <Data key="Assigned" value="True" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="16" />
+      </Group>
+      <Group key="CortexM4">
+        <Data key="Assigned" value="False" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="-1" />
+      </Group>
+    </Group>
+    <Group key="de164eb3-a53c-4851-88c9-89685094a653">
+      <Group key="CortexM0p">
+        <Data key="Assigned" value="True" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="13" />
+      </Group>
+      <Group key="CortexM4">
+        <Data key="Assigned" value="False" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="-1" />
+      </Group>
+    </Group>
+    <Group key="f0082288-f756-445b-98f8-7119b9f86c04">
+      <Group key="CortexM0p">
+        <Data key="Assigned" value="True" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="14" />
+      </Group>
+      <Group key="CortexM4">
+        <Data key="Assigned" value="False" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="-1" />
+      </Group>
+    </Group>
+    <Group key="fba323ef-d318-4e9f-9811-a8e22090f12a">
+      <Group key="CortexM0p">
+        <Data key="Assigned" value="True" />
+        <Data key="Priority" value="Default" />
+        <Data key="Vector" value="11" />
       </Group>
       <Group key="CortexM4">
         <Data key="Assigned" value="False" />

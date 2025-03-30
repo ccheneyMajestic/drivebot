@@ -24,15 +24,15 @@
   #include <stdint.h>
   #include "mjl_uart.h"
   #include "mjl_spi.h"
+  #include "rgb.h"
+  
   /***************************************
   * Macro Definitions
   ***************************************/
   #define LED_ON (0)
   #define LED_OFF (1)
   #define ENCODER_OFFSET    (1u<<31)
-  #define RGB_INDEX_RED     (0)
-  #define RGB_INDEX_GREEN   (1)
-  #define RGB_INDEX_BLUE    (2)
+
   /* Motor Control Register */
   #define MOTOR_INDEX_LEFT   (0)
   #define MOTOR_INDEX_RIGHT  (1)
@@ -42,30 +42,27 @@
   #define MOTOR_DIRECTION_RIGHT_SHIFT (1)
   #define MOTOR_ENABLE_LEFT_SHIFT     (2)
   #define MOTOR_ENABLE_RIGHT_SHIFT    (3)
-
-
   #define MOTOR_EFFORT_MAX            (1000)
   #define MOTOR_EFFORT_MIN            (-1000)
-  /* Advertising colors */
-  #define ADVERTISING_COLORS_LEN      (7)
-  #define RGB_SHIFT_RED               (0)
-  #define RGB_SHIFT_GREEN             (8)
-  #define RGB_SHIFT_BLUE              (16)
+
+  
+  /* Flash - emulated eeprom */
+  /* ID Field */
+  #define FLASH_ID_ADDR               (0) /* Offset address of the ID value in flash */
+  #define FLASH_ID_LEN                (1) /* Length of the flash ID */
+  #define FLASH_RGB_ADDR              (FLASH_ID_ADDR + FLASH_ID_LEN) /* Offset address of the RGB Color */
+  #define FLASH_RGB_LEN               (sizeof(rgb_s))
   /***************************************
   * Macro-like definitions
   ***************************************/
   #define CLAMP(value, min, max) ((value) < (min) ? (min) : ((value) > (max) ? (max) : (value)))
 
-  
   /***************************************
   * Forward Declarations
   ***************************************/
   extern MLJ_UART_S usb; /* Defined in main_cm0p.c */
-  extern const uint32_t advertisingColors[ADVERTISING_COLORS_LEN]; /* Defined in hal_psoc6.c */
+
   
-  /***************************************
-  * Structures 
-  ***************************************/
 
   /***************************************
   * Function declarations 
@@ -86,10 +83,16 @@
   uint32_t spi_psoc6SCB_clearTxBuffer(void);
   
   void hal_reset_device(MLJ_UART_S *const uart);
+  /* Flash operations */
+  uint32_t hal_flash_id_read(uint8_t* id);
+  uint32_t hal_flash_id_write(uint8_t id);
+  uint32_t hal_flash_rgb_read(rgb_s * rgb);
+  uint32_t hal_flash_rgb_write(const rgb_s * rgb);
+  /* RGB */
   uint32_t hal_led_pin_write(bool state);
-  uint32_t hal_rgb_set_duty(uint8_t red, uint8_t green, uint8_t blue);
-  uint32_t hal_rgb_set_duty_word(uint32_t rgbWord);
-  uint32_t hal_rgb_get_duty_word(uint32_t rgbWord, uint8_t* red, uint8_t* green, uint8_t* blue);
+  uint32_t hal_rgb_set_color(const rgb_s* rgb);
+  uint32_t hal_rgb_set_alpha(uint8_t alpha);
+  /* Motors and encoders */
   uint32_t hal_encoder_read_left(int32_t* encoder_val);
   uint32_t hal_encoder_read_right(int32_t* encoder_val);
   uint32_t hal_motors_enable(bool left, bool right);

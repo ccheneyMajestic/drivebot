@@ -12,13 +12,28 @@
 #include "ble_app.h"
 #include <stdio.h>
 
+const alpha_dimmer_s dimmer_default = {
+    .is_active = false,
+    .is_active_prev = true,
+    .val = ALPHA_MAX,   
+    .delta  = -1,
+    .flag_timer_breathe = false
+  };
+  
 /* BLE State Intialization */
 BLE_APP_S bleState = {
+  /* BLE State */
+  .is_device_connected = false,
   /* Printing state */
   .print_stack_events = true,
   .print_write_events = true,
   .print_hardware_events = true,
   /*********** Characteristic Config ***********/
+  /* ID */
+  .idHandle.attrHandle = CY_BLE_DRIVEBOT_SERVICE_ID_CHAR_HANDLE,
+  .idHandle.value.val = bleState.idState,
+  .idHandle.value.len = LEN_CHARACTERISTIC_ID,
+  .idName = "ID",
   /* LED control */
   .ledHandle.attrHandle = CY_BLE_DRIVEBOT_SERVICE_LED_CHAR_HANDLE,
   .ledHandle.value.val = bleState.ledState,
@@ -29,8 +44,6 @@ BLE_APP_S bleState = {
   .rgbHandle.value.val = bleState.rgbState,
   .rgbHandle.value.len = LEN_CHAR_RGB,
   .rgbName = "Onboard RGB",
-  /* RGB Advertisement LED */
-  .rgbAdv_index = 0,
   /* Encoder Reading */
   .encoderPosHandle.attrHandle = CY_BLE_DRIVEBOT_SERVICE_ENCODER_POSITION_CHAR_HANDLE, 
   .encoderPosHandle.value.val = (uint8_t *) bleState.encoderPosState,
@@ -79,6 +92,11 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
       bleApp_advertise();
       break;
     }
+    /* Flash Write */
+    case CY_BLE_EVT_PENDING_FLASH_WRITE : {
+      if(bleState.print_stack_events){uart_println(&usb, "BLE Flash");}
+      break;
+    }
     /* Restart Advertisement on timeout */
     case CY_BLE_EVT_GAPP_ADVERTISEMENT_START_STOP: {
       /* See the state of the advertisement */
@@ -91,7 +109,10 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
       else if (advState == CY_BLE_ADV_STATE_ADV_INITIATED) {
         if(bleState.print_stack_events){uart_println(&usb, "Advertising Start Initiated");}
       }
+      /* Actively advertising */
       else if (advState == CY_BLE_ADV_STATE_ADVERTISING){
+        /* Breathe the RGB */
+        bleState.breathing->is_active = true;
         if(bleState.print_stack_events){uart_println(&usb, "Advertising");}
       }
       else if (advState == CY_BLE_ADV_STATE_STOP_INITIATED){
@@ -105,6 +126,7 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
     ***********************************************************/
     /* Start adversiting when disconnected */
     case CY_BLE_EVT_GAP_DEVICE_DISCONNECTED: {
+      bleState.is_device_connected = false;
       if(bleState.print_stack_events){uart_println(&usb, "BLE Device Disconnected");}
       /* Disable the motors */
       bleApp_motorEnable_update_state(false, false, true);
@@ -118,9 +140,10 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
     /* This event is generated at the GAP peripheral end after connection
     is completed with the peer central device */
     case CY_BLE_EVT_GATT_CONNECT_IND: {
+      /* Update the state object */
+      bleState.is_device_connected = true;
+      bleState.breathing->is_active = false;
       bleState.connHandle = * (cy_stc_ble_conn_handle_t *) eventParam;
-      /* Update the LED */
-      bleApp_rgb_update_state(0, 50, 0, true);
       if(bleState.print_stack_events){uart_println(&usb, "BLE Device Connected");}
       break;
     }
@@ -137,8 +160,12 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
       /* Send a write response. NOTE: A write response does NOT echo back data. A Read request is required to readback data */
       Cy_BLE_GATTS_WriteRsp(bleState.connHandle);
       /**************** Handle the Specific characteristic *****************/
+      /* Set the ID */
+      if(attributeHandle == bleState.idHandle.attrHandle){
+        bleApp_id_write_request_handler(write_request);
+      }
       /* Control the offboard LED */  
-      if (attributeHandle == bleState.ledHandle.attrHandle){
+      else if (attributeHandle == bleState.ledHandle.attrHandle){
         bleApp_led_write_request_handler(write_request);
       }
       /* Set the RGB led */
@@ -160,6 +187,7 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
       cy_stc_ble_gatts_write_cmd_req_param_t writeParam = *(cy_stc_ble_gatts_write_cmd_req_param_t *) eventParam;
       cy_stc_ble_gatt_value_t* write_request = &writeParam.handleValPair.value;      
       cy_ble_gatt_db_attr_handle_t attributeHandle = writeParam.handleValPair.attrHandle;
+      /* Set the motor control effort */
       if (attributeHandle == bleState.motorEffort_handle.attrHandle){
         bleApp_motorEffort_write_request_handler(write_request); 
       }
@@ -168,6 +196,7 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
           
     /* Unhandled event */
     default: {
+//      if(bleState.print_stack_events){uart_printlnf(&usb, "BLE: Unhandled event: 0x%x", eventCode);}
       break;
     }
     /* End EventCode Switch */
@@ -194,12 +223,11 @@ uint32_t bleApp_advertise(){
     cy_en_ble_adv_state_t advState = Cy_BLE_GetAdvertisementState();
     /* Was not advertising, start now */
     if(advState == CY_BLE_ADV_STATE_STOPPED){
-
+      /* Ensure correct LED color is being advertised */
+      error |= bleApp_update_scan_response(&bleState.device_color);
       /* Start Advertising */
       if(bleState.print_stack_events){uart_println(&usb, "Starting Advertisement");}
-      error = Cy_BLE_GAPP_StartAdvertisement(CY_BLE_ADVERTISING_FAST, CY_BLE_PERIPHERAL_CONFIGURATION_0_INDEX);
-      /* Get the next color  */
-      error = bleApp_advertise_cycle_rgb();
+      error |= Cy_BLE_GAPP_StartAdvertisement(CY_BLE_ADVERTISING_FAST, CY_BLE_PERIPHERAL_CONFIGURATION_0_INDEX);
     }
   }
   if(error){
@@ -209,43 +237,40 @@ uint32_t bleApp_advertise(){
 }
 
 /*******************************************************************************
-* Function Name: bleApp_advertise_cycle_rgb()
+* Function Name: bleApp_cycle_rgb()
 ********************************************************************************
 * \brief
-*   Advance to the next advertising color for the RGB and update the scan response
+*   Advance to the next rgb color and update the scan response
 *   packet with the new color
 *
 * \return
 *  Error code of the operation 
 *******************************************************************************/
-uint32_t bleApp_advertise_cycle_rgb(void){
+uint32_t bleApp_cycle_rgb(void){
   uint32_t error = 0;
-  /* Get the state of the stack */ 
-  if(Cy_BLE_GetState() != CY_BLE_STATE_ON){error |= 1;}
-  if(CY_BLE_ADV_STATE_STOPPED == Cy_BLE_GetAdvertisementState()){error |= 2;}
-
+  /* Find the index of the current color */
+  uint8_t index = 0;
+  uint8_t match_index;
+  uint32_t match_error = rgb_get_base_color_index(&bleState.device_color, &match_index);
+  if(!match_error) {
+    uart_printlnf(&usb, "Match index found: %u", match_index);    
+    /* Advance to next index */
+    index = match_index +1;
+    if(index >= BASE_COLORS_LEN){index = 0;}
+    
+  } else {
+    uart_println(&usb, "No match found");
+  }
+    
+  /* Update the RGB LED */
+  uart_printlnf(&usb, "Cycling RGB %u", index);
+  const rgb_s* color = rgb_base_colors[index];
+  /* Update the hardware and save to flash */
+  error |= bleApp_rgb_update_state(color, true, true);
+  
   if(!error){
-    /* Update the state */
-    uint8_t index = bleState.rgbAdv_index;
-    uart_printlnf(&usb, "Cycling advertising RGB %u", index);
-    uint32_t rgbWord = advertisingColors[index];
-    bleState.rgbAdv_index++;
-    if(bleState.rgbAdv_index >= ADVERTISING_COLORS_LEN){bleState.rgbAdv_index = 0;}
-    /* Update the hardware */
-    uint8_t red, green, blue;
-    hal_rgb_get_duty_word(rgbWord, &red, &green, &blue);
-    bleApp_rgb_update_state(red, green, blue, true);
-    /* Update the Scan response data to include the color */ 
-    cy_stc_ble_gapp_disc_mode_info_t advScanParams;
-    cy_ble_scanRspData->scanRspData[SCAN_RESPONSE_RGB_INDEX_RED]=red;
-    cy_ble_scanRspData->scanRspData[SCAN_RESPONSE_RGB_INDEX_GREEN]=green;
-    cy_ble_scanRspData->scanRspData[SCAN_RESPONSE_RGB_INDEX_BLUE]=blue;
-    advScanParams.scanRspData = cy_ble_scanRspData;
-    /* Don't change the existing Advertisement data */
-    advScanParams.advData = cy_ble_discoveryData; 
-    /* Execute the update */
-    error = Cy_BLE_GAPP_UpdateAdvScanData(&advScanParams);
- 
+    /* Update the scan response packet */
+    error = bleApp_update_scan_response(color);
   }
   if(error && bleState.print_hardware_events){
     uart_printlnf(&usb, "Bad Cycle Advertise RGB error: %u", error);
@@ -254,23 +279,57 @@ uint32_t bleApp_advertise_cycle_rgb(void){
   return error;
 }
 
+/*******************************************************************************
+* Function Name: bleApp_update_scan_response()
+********************************************************************************
+* \brief
+*   Updates the BLE scan response data with the given RGB color.
+*
+* \param rgb [in]
+*   Pointer to an rgb_s struct containing red, green, and blue values to insert
+*   into the scan response payload.
+*
+* \return
+*   Error code of the operation. Non-zero if the BLE stack is not ON or if the
+*   update operation fails.
+*******************************************************************************/
+uint32_t bleApp_update_scan_response(const rgb_s* rgb) {
+ uint32_t error = 0;
+  /* Get the state of the stack */ 
+  if(Cy_BLE_GetState() != CY_BLE_STATE_ON){error |= 1;}
+  if(!error) {
+    /* Update the Scan response data to include the color */ 
+    cy_stc_ble_gapp_disc_mode_info_t advScanParams;
+    cy_ble_scanRspData->scanRspData[SCAN_RESPONSE_RGB_INDEX_RED]= rgb->red;
+    cy_ble_scanRspData->scanRspData[SCAN_RESPONSE_RGB_INDEX_GREEN]= rgb->green;
+    cy_ble_scanRspData->scanRspData[SCAN_RESPONSE_RGB_INDEX_BLUE]= rgb->blue;
+    advScanParams.scanRspData = cy_ble_scanRspData;
+    /* Don't change the existing Advertisement data */
+    advScanParams.advData = cy_ble_discoveryData; 
+    /* Execute the update */
+    error = Cy_BLE_GAPP_UpdateAdvScanData(&advScanParams);
+  }
+  return error;
+}
+
 
 /*******************************************************************************
 * Function Name: bleApp_updateBleDatabase()
 ********************************************************************************
 * \brief
-*   Update the BLE database 
+*   Updates a GATT attribute in the BLE database, either from the local GATT 
+*   server or from a connected peer device, depending on the source of initiation.
 *
 * \param handle [in]
-* Pointer to the handle of the characteristic to update
+*   Pointer to the handle-value pair representing the attribute to update.
 *
 * \param was_locally_initiated [in]
-*   True if this was set locally, False if initiated by the peer 
+*   True if the attribute write was initiated locally; false if initiated by the peer.
 *
 * \return
-*  Error code of the operation 
+*   Bitmask error code (0 for success; non-zero indicates failure or invalid state).
 *******************************************************************************/
-inline uint32_t bleApp_updateBleDatabase(cy_stc_ble_gatt_handle_value_pair_t* handle, bool was_locally_initiated){
+uint32_t bleApp_updateBleDatabase(cy_stc_ble_gatt_handle_value_pair_t* handle, bool was_locally_initiated){
   uint32_t error = 0; 
   cy_en_ble_state_t ble_state = Cy_BLE_GetState();
   if(CY_BLE_STATE_STOPPED == ble_state){error |= 3;}
@@ -319,6 +378,30 @@ void bleApp_printWrite(uint32_t write_error, char* name, char* message){
 
 
 /*========================== Write Request Handlers ==========================*/
+/*******************************************************************************
+* Function Name: bleApp_id_write_request_handler()
+********************************************************************************
+* \brief
+*   Set the ID of the robot
+*
+* \param write_request [in]
+*  Pointer to the write request
+*
+* \return
+*  Error code of the operation 
+*******************************************************************************/
+uint32_t bleApp_id_write_request_handler(cy_stc_ble_gatt_value_t* write_request){
+  uint32_t error = 0; 
+    /* Validate Request */
+  if(LEN_CHARACTERISTIC_ID != write_request->len){error |= 1;}
+  /* Unpack the request and update the state */
+  if(!error){
+    bool id = write_request->val[0];
+    /* Call the State Updater */
+    error |= bleApp_id_update_state(id, false);
+  }
+  return error;
+}
 
 /*******************************************************************************
 * Function Name: bleApp_led_write_request_handler()
@@ -363,11 +446,12 @@ uint32_t bleApp_rgb_write_request_handler(cy_stc_ble_gatt_value_t* write_request
   if(LEN_CHAR_RGB != write_request->len){error |= 1;}
   /* Unpack the request and update the state */
   if(!error){
-    uint8_t red = write_request->val[RGB_INDEX_RED];
-    uint8_t green = write_request->val[RGB_INDEX_GREEN];
-    uint8_t blue = write_request->val[RGB_INDEX_BLUE];
-    /* Call the State Updater */
-    error |= bleApp_rgb_update_state(red, green, blue, false);
+    rgb_s rgb;
+    rgb.red = write_request->val[RGB_INDEX_RED];
+    rgb.green = write_request->val[RGB_INDEX_GREEN];
+    rgb.blue = write_request->val[RGB_INDEX_BLUE];
+    /* Call the State Updater and save to flash */
+    error |= bleApp_rgb_update_state(&rgb, false, true);
   }
   return error;
 }
@@ -437,13 +521,58 @@ uint32_t bleApp_motorEffort_write_request_handler(cy_stc_ble_gatt_value_t* write
 /*========================== State Updaters ==========================*/
 
 /*******************************************************************************
+* Function Name: bleApp_id_update_state()
+********************************************************************************
+* \brief
+*  Update the local ID. Save the new value to flash to persist after PoR. If
+* locally initated, ignore the input argument ID and read the current ID from flash.
+* Set the databases to that read value
+*
+* \param red [in]
+*   Is the led on of off
+*
+* \param was_locally_initiated [in]
+*   The ID should only be updated locally on boot. Don't write to flash in that
+*   case. 
+*
+* \return
+*  Error code of the operation 
+*******************************************************************************/
+uint32_t bleApp_id_update_state(uint8_t id, bool was_locally_initiated){
+  uint32_t error = 0;
+  /* Save the ID to flash if remotely initiated */
+  if(!was_locally_initiated){
+    error |= hal_flash_id_write(id);
+  } 
+  /* Read the value from flash on local update */
+  else {
+    error = hal_flash_id_read(&id);
+  }
+  /* Update the Databases */
+  if(!error){
+    /***** Update the State Database *****/
+    bleState.idState[0] = id;
+    /***** Update the BLE Databases *****/
+    error |= bleApp_updateBleDatabase(&bleState.idHandle, was_locally_initiated);
+    /***** Print the message *****/
+    char message[40];
+    sprintf(message, "Setting ID to: %d", id);
+    bleApp_printWrite(error, bleState.idName, message);
+  }
+  else {
+    uart_printlnf(&usb, "Error writing ID to flash: 0x%x", error); 
+  }
+  return error;
+}
+
+/*******************************************************************************
 * Function Name: bleApp_led_update_state()
 ********************************************************************************
 * \brief
 *  Set the state of the off-board LED and update both the BLE and State databases
 *
-* \param red [in]
-*   Is the led on of off
+* \param led [in]
+*   Is the led on or off
 *
 * \param was_locally_initiated [in]
 *   True if this was set locally, False if initiated by the peer 
@@ -473,38 +602,41 @@ uint32_t bleApp_led_update_state(bool led, bool was_locally_initiated){
 * Function Name: bleApp_rgb_update_state()
 ********************************************************************************
 * \brief
-*  Set the state of the on-board RGB and update both the BLE and State databases
+*   Updates the RGB hardware, optionally saves the state to flash, and updates 
+*   the internal and BLE databases with the new RGB values.
 *
-* \param red [in]
-*   Set the PWM values for the red LED [0-100]
-*
-* \param green [in]
-*   Set the PWM values for the red LED [0-100]
-*
-* \param blue [in]
-*   Set the PWM values for the red LED [0-100]
+* \param rgb [in]
+*   Pointer to the RGB structure containing the new color values.
 *
 * \param was_locally_initiated [in]
-*   True if this was set locally, False if initiated by the peer 
+*   True if the update was initiated locally; false if initiated by the peer.
+*
+* \param save_flash [in]
+*   True to persist the RGB state to flash memory; false to skip saving.
 *
 * \return
-*  Error code of the operation 
-*******************************************************************************/
-uint32_t bleApp_rgb_update_state(uint8_t red, uint8_t green, uint8_t blue, bool was_locally_initiated){
+*   Bitmask error code (0 for success; non-zero indicates failure).
+*******************************************************************************/  
+uint32_t bleApp_rgb_update_state(const rgb_s* rgb, bool was_locally_initiated, bool save_flash){
   uint32_t error = 0; 
   /* Update the Hardware */
-  error |= hal_rgb_set_duty(red, green, blue);
+  error |= hal_rgb_set_color(rgb);
+  /* Save to flash */
+  if(save_flash) {
+    error |= hal_flash_rgb_write(rgb);
+  }
   /* Update the Databases */
   if(!error){
     /***** Update the State Database *****/
-    bleState.rgbState[RGB_INDEX_RED] = red;
-    bleState.rgbState[RGB_INDEX_GREEN] = green;
-    bleState.rgbState[RGB_INDEX_BLUE] = blue;
+    bleState.device_color = *rgb;
+    bleState.rgbState[RGB_INDEX_RED] = rgb->red;
+    bleState.rgbState[RGB_INDEX_GREEN] = rgb->green;
+    bleState.rgbState[RGB_INDEX_BLUE] = rgb->blue;
     /***** Update the BLE Databases *****/
     error |= bleApp_updateBleDatabase(&bleState.rgbHandle, was_locally_initiated);
     /***** Print the message *****/
     char message[40];
-    sprintf(message, "Writing RGB: %d, %d, %d", red, green, blue);
+    sprintf(message, "Writing rgb: %u, %u, %u", rgb->red, rgb->green, rgb->blue);
     bleApp_printWrite(error, bleState.rgbName, message);
   }
   return error;
@@ -616,6 +748,7 @@ uint32_t bleApp_encoder_update_state(int32_t left, int32_t right){
   
   return error;
 }
+
 
 
 /* [] END OF FILE */
