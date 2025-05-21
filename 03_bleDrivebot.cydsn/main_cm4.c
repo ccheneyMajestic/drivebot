@@ -1,26 +1,36 @@
-/* ========================================
- *
- * Copyright YOUR COMPANY, THE YEAR
- * All Rights Reserved
- * UNPUBLISHED, LICENSED SOFTWARE.
- *
- * CONFIDENTIAL AND PROPRIETARY INFORMATION
- * WHICH IS THE PROPERTY OF your company.
- *
- * ========================================
-*/
+/***************************************************************************
+*                           Majestic Labs  © 2025
+* File: main_cm4.c
+* Workspace: BLE Drivebot
+* Version: v1.0
+* Author: Craig Cheney
+*
+* PCB: 
+* mcuPSoC 6 v5
+*
+* Brief:
+*   Code for the CM4 core
+*
+* Change Log:
+*   2025.03 - Document created
+********************************************************************************/
 #include "project.h"
 
+
+/*******************************************************************************
+* Function Name: main()
+********************************************************************************
+* Summary:
+*   Main entry point for the CM4
+*
+* Returns:
+* Never
+*
+*******************************************************************************/
 int main(void)
 {
     __enable_irq(); /* Enable global interrupts. */
-
-    /* Place your initialization/startup code here (e.g. MyInst_Start()) */
-
-    for(;;)
-    {
-        /* Place your application code here. */
-    }
+    for(;;){}
 }
 
 /* [] END OF FILE */

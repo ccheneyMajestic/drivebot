@@ -1,25 +1,23 @@
 /***************************************************************************
-*                           Majestic Labs  © 2023
-* File: template_main_psoc6.c
-* Workspace: MJL Driver Templates
+*                           Majestic Labs  © 2025
+* File: main_cp0p.c
+* Workspace: BLE Drivebot
 * Version: v1.0
 * Author: Craig Cheney
 *
 * PCB: 
+* mcuPSoC 6 v5
 *
 * Brief:
-*   Template for the PSoC6 Main for the CM0+ Core
+*   Main entry point for the BLE Drivebot application. Controls the CM0+ core
 *
 * Change Log:
-*   2023.12.31 - Document created
+*   2025.03 - Document created
 ********************************************************************************/
 #include "project.h" /* Cypress project */
 #include "mjl_errors.h"
 #include "mjl_uart.h"
 #include "hal_psoc6.h"
-#include "LTC6915.h"
-#include "DRV8244.h"
-#include "max31856.h"
 #include "ble_app.h"
 
 
@@ -68,9 +66,6 @@ typedef struct {
 } system_time_s;
 
 uint32_t get_system_time_atomic(system_time_s *const state);
-
-uint32_t drv8244_current_from_voltage(drv8244_state_s *const, float32_t voltage); 
-
 
 /* Global Variables */
 MLJ_UART_S usb;
