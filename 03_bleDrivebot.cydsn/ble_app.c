@@ -69,17 +69,19 @@ BLE_APP_S bleState = {
 * Function Name: bleApp_eventCallback()
 ********************************************************************************
 * \brief
-*   Bluetooth callback function. Handle all BLE functionality  
+*   Handles BLE stack, GAP, GATT, and advertisement events. Dispatches actions
+*   such as starting advertisement, handling characteristic write requests,
+*   and managing connection state.
 *
 * \param eventCode [in]
-* Code of the latest event that occured 
+*   BLE event code indicating the type of event.
 *
 * \param eventParam [in]
-*   Pointer to the struct (type depends on eventCode)
+*   Pointer to the event-specific parameters structure.
 *
 * \return
-*  None
-*******************************************************************************/
+*   None
+*******************************************************************************/  
 void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
   /* Act depending on the event*/
   switch(eventCode){
@@ -207,11 +209,16 @@ void bleApp_eventCallback(uint32_t eventCode, void * eventParam){
 * Function Name: bleApp_advertise()
 ********************************************************************************
 * \brief
-*   Initiate Advertising
+*   Starts BLE advertising if the BLE stack is on and not already advertising.
+*   Also updates the scan response packet with the current device color.
 *
 * \return
-*  Error code of the operation 
-*******************************************************************************/
+*   Bitmask error code:
+*     - 0: Success
+*     - 1: BLE stack is not in CY_BLE_STATE_ON
+*     - Other bits may be set from scan response or advertising start failures
+*******************************************************************************/  
+
 uint32_t bleApp_advertise(){
   uint32_t error = 0;
   /* Get the state of the stack */ 
@@ -240,12 +247,12 @@ uint32_t bleApp_advertise(){
 * Function Name: bleApp_cycle_rgb()
 ********************************************************************************
 * \brief
-*   Advance to the next rgb color and update the scan response
-*   packet with the new color
+*   Cycles the RGB LED to the next predefined base color, updates the device state,
+*   writes the new color to hardware and flash, and updates the BLE scan response.
 *
 * \return
-*  Error code of the operation 
-*******************************************************************************/
+*   Bitmask error code (0 for success; non-zero indicates failure).
+*******************************************************************************/  
 uint32_t bleApp_cycle_rgb(void){
   uint32_t error = 0;
   /* Find the index of the current color */
